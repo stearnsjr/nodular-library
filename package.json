@@ -1,0 +1,12 @@
+{
+  "name": "storytellers-library",
+  "version": "1.0.0",
+  "description": "Self-hosted Storyteller's Library Mind Map & D&D Character Book",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

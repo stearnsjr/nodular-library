@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>The Storyteller's Library — Illustrated Mind Map</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="lib-daylight">
+  <!-- Full-viewport 2D Illustrated SVG Library Canvas -->
+  <div id="canvas-wrap" class="fixed inset-0 w-full h-full overflow-hidden">
+    <svg id="library-svg" class="w-full h-full block" xmlns="http://www.w3.org/2000/svg">
+      <defs id="svg-defs">
+        <filter id="bookShadow" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="1" dy="4" stdDeviation="2.5" flood-color="#221208" flood-opacity="0.26" />
+        </filter>
+        <filter id="shelfShadow" x="-25%" y="-25%" width="150%" height="150%">
+          <feDropShadow dx="0" dy="5" stdDeviation="3.5" flood-color="#221208" flood-opacity="0.24" />
+        </filter>
+        <filter id="searchGlow" x="-45%" y="-45%" width="190%" height="190%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="4.5" result="blurInner" />
+          <feGaussianBlur in="SourceGraphic" stdDeviation="11" result="blurOuter" />
+          <feMerge>
+            <feMergeNode in="blurOuter" />
+            <feMergeNode in="blurInner" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+        <radialGradient id="sunbeamGrad" cx="45%" cy="40%" r="55%">
+          <stop offset="0%" stop-color="#fff4c4" stop-opacity="0.48" />
+          <stop offset="60%" stop-color="#ffe7a3" stop-opacity="0.14" />
+          <stop offset="100%" stop-color="#ffe7a3" stop-opacity="0" />
+        </radialGradient>
+        <radialGradient id="lanternGrad" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#ffd57a" stop-opacity="0.72" />
+          <stop offset="45%" stop-color="#f2a23f" stop-opacity="0.24" />
+          <stop offset="100%" stop-color="#f2a23f" stop-opacity="0" />
+        </radialGradient>
+        <linearGradient id="shelfBackDay" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#4e311d" />
+          <stop offset="35%" stop-color="#694329" />
+          <stop offset="100%" stop-color="#7c5134" />
+        </linearGradient>
+        <linearGradient id="shelfBackNight" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#1e110a" />
+          <stop offset="40%" stop-color="#2f1c11" />
+          <stop offset="100%" stop-color="#3e2517" />
+        </linearGradient>
+        <pattern id="woodGrainDay" width="36" height="36" patternUnits="userSpaceOnUse" patternTransform="rotate(15)">
+          <rect width="36" height="36" fill="#d9a86e" />
+          <path d="M0 9 Q18 7 36 9 M0 21 Q18 23 36 21 M0 33 Q18 31 36 33" stroke="#c38e52" stroke-width="1.2" fill="none" opacity="0.5" />
+          <path d="M12 0 L12 9 M28 9 L28 21 M8 21 L8 33" stroke="#b67f43" stroke-width="1" opacity="0.32" />
+        </pattern>
+        <pattern id="woodGrainNight" width="36" height="36" patternUnits="userSpaceOnUse" patternTransform="rotate(15)">
+          <rect width="36" height="36" fill="#5e3e29" />
+          <path d="M0 9 Q18 7 36 9 M0 21 Q18 23 36 21 M0 33 Q18 31 36 33" stroke="#472d1c" stroke-width="1.2" fill="none" opacity="0.65" />
+          <path d="M12 0 L12 9 M28 9 L28 21 M8 21 L8 33" stroke="#3b2314" stroke-width="1" opacity="0.45" />
+        </pattern>
+      </defs>
+      <g id="world-layer">
+        <g id="scene-content"></g>
+        <g id="librarian-overlay-layer" pointer-events="none"></g>
+        <g id="drag-overlay-layer" pointer-events="none"></g>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Top Floating Storybook Toolbar -->
+  <header class="fixed top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+    <div class="storybook-panel rounded-2xl px-3.5 py-2 flex items-center gap-2.5 pointer-events-auto max-w-full overflow-x-auto">
+      <button id="btn-home-hub" title="Open Central Rotunda & Card Index" class="flex items-center gap-2 shrink-0 cursor-pointer bg-transparent border-0 p-0 text-left">
+        <span class="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style="background: var(--ui-accent-soft); border: 1.5px solid var(--ui-border);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="color: var(--ui-accent);">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            <path d="M9 7h6M9 11h4" />
+          </svg>
+        </span>
+        <span id="toolbar-title" class="font-storybook font-bold text-sm tracking-tight whitespace-nowrap" style="color: var(--ui-ink);">Grand Idea Library</span>
+      </button>
+      <nav id="breadcrumbs" class="flex items-center gap-1 text-xs whitespace-nowrap" style="color: var(--ui-muted);"></nav>
+    </div>
+
+    <div class="storybook-panel rounded-2xl px-2.5 py-1.5 flex items-center gap-1.5 pointer-events-auto relative">
+      <!-- Quick Card Index button -->
+      <button id="btn-card-index" title="Open Central Card Index (Colors, Stamps & Ribbons)" class="storybook-btn rounded-xl px-2.5 py-1.5 text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/>
+        </svg>
+        <span class="hidden md:inline">Card Index</span>
+      </button>
+
+      <!-- Ribbons visibility toggle -->
+      <button id="btn-toggle-ribbons" title="Show or hide cross-reference ribbons on the library map" class="storybook-btn active rounded-xl px-2.5 py-1.5 text-xs font-medium flex items-center gap-1 cursor-pointer">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 19c4-6 12-6 16-14"/><circle cx="4" cy="19" r="2"/><circle cx="20" cy="5" r="2"/>
+        </svg>
+        <span class="hidden lg:inline" id="ribbon-toggle-label">Ribbons</span>
+      </button>
+
+      <!-- Global Library Tasks Aggregator Dropdown (Upper-Right Menu) -->
+      <div class="relative">
+        <button id="btn-tasks-menu" title="View all tasks across every book in your library" class="storybook-btn rounded-xl px-2.5 py-1.5 text-xs font-medium flex items-center gap-1.5 cursor-pointer">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="color: var(--ui-accent);">
+            <rect x="3" y="4" width="18" height="17" rx="3"/><path d="M9 12l2 2 4-4"/>
+          </svg>
+          <span class="hidden md:inline">Tasks</span>
+          <span id="tasks-menu-badge" class="text-[10.5px] font-mono font-bold px-1.5 py-0.2 rounded-full" style="background: var(--ui-accent-soft); color: var(--ui-accent);">0/0</span>
+        </button>
+        <div id="menu-tasks" class="hidden absolute right-0 top-full mt-2 w-80 sm:w-96 max-h-[420px] flex flex-col storybook-panel rounded-2xl p-2.5 z-40 shadow-2xl"></div>
+      </div>
+
+      <!-- Search + Match Hopper -->
+      <div class="relative flex items-center gap-1">
+        <div class="relative">
+          <span class="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style="color: var(--ui-muted);">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" />
+            </svg>
+          </span>
+          <input id="search-input" type="text" placeholder="Search hall, book, ribbon, stamp, page…" class="storybook-input rounded-xl pl-8 pr-7 py-1.5 text-xs w-44 sm:w-52" />
+          <button id="btn-clear-search" type="button" title="Clear search & glow (Esc)" class="hidden absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full flex items-center justify-center text-[11px] font-bold cursor-pointer bg-transparent border-0 hover:bg-black/10" style="color: var(--ui-muted);">&times;</button>
+          <div id="search-results" class="hidden absolute right-0 top-full mt-2 w-72 max-h-72 overflow-y-auto nice-scroll storybook-panel rounded-2xl p-1.5 z-40"></div>
+        </div>
+        <div id="search-hopper" class="hidden items-center gap-0.5 rounded-xl px-1 py-0.5" style="background: var(--ui-accent-soft); border: 1.5px solid var(--ui-border);">
+          <button id="btn-hop-prev" type="button" title="Previous glowing match (Shift+Enter)" class="w-5 h-5 rounded-lg flex items-center justify-center text-[11px] font-bold cursor-pointer bg-transparent border-0 hover:bg-black/10" style="color: var(--ui-accent);">&lsaquo;</button>
+          <span id="search-hop-count" class="text-[10.5px] font-mono font-bold px-1 tabular-nums" style="color: var(--ui-accent);">0/0</span>
+          <button id="btn-hop-next" type="button" title="Next glowing match (Enter)" class="w-5 h-5 rounded-lg flex items-center justify-center text-[11px] font-bold cursor-pointer bg-transparent border-0 hover:bg-black/10" style="color: var(--ui-accent);">&rsaquo;</button>
+        </div>
+      </div>
+
+      <!-- Undo / Redo -->
+      <div class="hidden sm:flex items-center gap-1">
+        <button id="btn-undo" title="Undo (Ctrl+Z)" class="storybook-btn rounded-xl p-1.5 cursor-pointer disabled:opacity-40" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+        </button>
+        <button id="btn-redo" title="Redo (Ctrl+Y)" class="storybook-btn rounded-xl p-1.5 cursor-pointer disabled:opacity-40" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>
+        </button>
+      </div>
+
+      <!-- Templates Menu -->
+      <div class="relative">
+        <button id="btn-templates" title="Starter libraries & blank map" class="storybook-btn rounded-xl px-2.5 py-1.5 text-xs font-medium flex items-center gap-1 cursor-pointer">
+          <span>Libraries</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div id="menu-templates" class="hidden absolute right-0 top-full mt-2 w-64 storybook-panel rounded-2xl p-1.5 z-40">
+          <div class="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--ui-muted);">Switch Library</div>
+          <button data-template="creative" class="template-opt w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-ink);">
+            <span class="font-semibold">Creative Project Atlas</span>
+            <span class="text-[11px]" style="color: var(--ui-muted);">Halls, Sub-Halls, Study Table &amp; Pile</span>
+          </button>
+          <button data-template="worldbuilding" class="template-opt w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-ink);">
+            <span class="font-semibold">Story &amp; Worldbuilding</span>
+            <span class="text-[11px]" style="color: var(--ui-muted);">Realms, Factions, Heroes &amp; Ribbons</span>
+          </button>
+          <button data-template="study" class="template-opt w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-ink);">
+            <span class="font-semibold">Knowledge Garden</span>
+            <span class="text-[11px]" style="color: var(--ui-muted);">4 Halls · Notes, Sources, Stamps</span>
+          </button>
+          <div class="my-1 border-t" style="border-color: var(--ui-border);"></div>
+          <button data-template="blank" class="template-opt w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-accent);">
+            <span class="font-semibold">+ Blank Library</span>
+            <span class="text-[11px]" style="color: var(--ui-muted);">Fresh rotunda &amp; 1 starter hall</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Export / Import -->
+      <div class="relative">
+        <button id="btn-io" title="Export or Import your mind map" class="storybook-btn rounded-xl p-1.5 cursor-pointer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </button>
+        <div id="menu-io" class="hidden absolute right-0 top-full mt-2 w-56 storybook-panel rounded-2xl p-1.5 z-40">
+          <button id="act-export-md" class="w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-black/5 cursor-pointer bg-transparent border-0 flex items-center gap-2" style="color: var(--ui-ink);">
+            <span>Export Library Outline (.md)</span>
+          </button>
+          <button id="act-export-svg" class="w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-black/5 cursor-pointer bg-transparent border-0 flex items-center gap-2" style="color: var(--ui-ink);">
+            <span>Export Illustrated SVG</span>
+          </button>
+          <div class="my-1 border-t" style="border-color: var(--ui-border);"></div>
+          <button id="act-export-json" class="w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-black/5 cursor-pointer bg-transparent border-0 flex items-center gap-2" style="color: var(--ui-ink);">
+            <span>Save Mind Map (.json)</span>
+          </button>
+          <button id="act-import-json" class="w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-black/5 cursor-pointer bg-transparent border-0 flex items-center gap-2" style="color: var(--ui-ink);">
+            <span>Load Mind Map (.json)</span>
+          </button>
+          <input id="file-import-json" type="file" accept=".json,application/json" class="hidden" />
+        </div>
+      </div>
+
+      <!-- Ambient Library Life Toggle (Sleeping Cat & Idle Strolling Librarians) -->
+      <button id="btn-ambient" title="Toggle Ambient Library Life (sleeping cat & strolling librarians)" class="storybook-btn active rounded-xl p-1.5 cursor-pointer">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 10V5l3.5 3h7L19 5v5a7 7 0 0 1-14 0z"/>
+          <path d="M9.5 13h.01M14.5 13h.01M10.5 16c1 .8 2 .8 3 0"/>
+        </svg>
+      </button>
+
+      <!-- Cozy Foley Sound Effects Toggle (Muted by Default) -->
+      <button id="btn-sound" title="Toggle Cozy Sound Effects (paper rustle, wooden shelf thump & chimes — muted by default)" class="storybook-btn rounded-xl p-1.5 cursor-pointer">
+        <svg id="icon-sound" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+        </svg>
+      </button>
+
+      <!-- Daylight / Candlelight Lamp Toggle -->
+      <button id="btn-atmosphere" title="Switch Daylight / Candlelight" class="storybook-btn rounded-xl p-1.5 cursor-pointer">
+        <svg id="icon-lamp" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Floating Visual Stamp Lens Banner (shown when lighting up a Stamp on the map!) -->
+  <div id="stamp-lens-bar" class="hidden fixed top-[68px] left-1/2 -translate-x-1/2 z-20 storybook-panel rounded-full px-3.5 py-1.5 flex items-center gap-2 text-xs shadow-lg">
+    <span id="stamp-lens-dot" class="w-2.5 h-2.5 rounded-full shrink-0"></span>
+    <span id="stamp-lens-text" class="font-storybook font-bold whitespace-nowrap" style="color: var(--ui-ink);">Stamp Lens</span>
+    <div id="stamp-lens-hop" class="flex items-center gap-0.5 pl-1 border-l" style="border-color: var(--ui-border);">
+      <button id="btn-lens-prev" type="button" title="Previous matching book" class="w-5 h-5 rounded-full flex items-center justify-center font-bold cursor-pointer bg-transparent border-0 hover:bg-black/10" style="color: var(--ui-ink);">&lsaquo;</button>
+      <button id="btn-lens-next" type="button" title="Next matching book" class="w-5 h-5 rounded-full flex items-center justify-center font-bold cursor-pointer bg-transparent border-0 hover:bg-black/10" style="color: var(--ui-ink);">&rsaquo;</button>
+    </div>
+    <button id="btn-clear-lens" type="button" title="Turn off Stamp Lens (Esc)" class="rounded-full px-2 py-0.5 text-[11px] font-bold cursor-pointer bg-transparent border border-amber-900/25 hover:bg-black/10" style="color: var(--ui-ink);">Clear &times;</button>
+  </div>
+
+  <!-- Right Slide-Over Inspector (Card Index, Study Table, Sorting Pile, or Hall Editor) -->
+  <aside id="inspector-panel" class="hidden-panel fixed top-20 right-3 bottom-3 w-[372px] max-w-[calc(100vw-24px)] z-20 storybook-panel rounded-3xl flex flex-col overflow-hidden">
+    <div class="px-4 py-3 flex items-center justify-between border-b" style="border-color: var(--ui-border);">
+      <div class="flex items-center gap-2 min-w-0">
+        <span id="insp-badge" class="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0" style="background: var(--ui-accent-soft); color: var(--ui-accent);">Hall</span>
+        <span id="insp-header-title" class="font-storybook font-bold text-sm truncate">Details</span>
+      </div>
+      <button id="btn-close-inspector" title="Close panel (Esc)" class="storybook-btn rounded-xl p-1 cursor-pointer">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div id="inspector-body" class="flex-1 overflow-y-auto nice-scroll p-4 space-y-4"></div>
+  </aside>
+
+  <!-- CENTER-SCREEN OPEN STORYBOOK / UNROLLED SCROLL / SINGLE-PAGE / CORKBOARD MODAL -->
+  <div id="book-modal" class="book-closed fixed inset-0 z-30 flex items-center justify-center p-2 sm:p-4" style="background: rgba(24, 14, 8, 0.54); backdrop-filter: blur(5px);">
+    <div id="book-spread-wrap" class="relative w-full max-w-[1320px] h-[min(840px,calc(100vh-100px))] mt-4 mb-9 flex items-stretch gap-2.5 transition-all">
+      <!-- Side-by-Side Reference Peek Drawer (Compare / Read from Study Table while writing!) -->
+      <div id="book-ref-peek" class="hidden w-[290px] sm:w-[320px] shrink-0 rounded-[24px] p-3 flex flex-col shadow-2xl" style="background:#fdf5e4; border:3px solid #3c2516; color:#321f13;"></div>
+
+      <div id="book-cover-shell" class="relative flex-1 min-w-0 rounded-[28px] p-3 sm:p-4 flex flex-col book-stack-shadow" style="background:#d17152; border: 3px solid #3c2516;">
+        <!-- Top Outer Rim Next / Previous Book Flipper Tabs (Hall Books & Study Table Books!) -->
+        <div id="book-top-flippers" class="absolute left-4 right-28 bottom-full -mb-0.5 flex items-end gap-2 flex-wrap z-20 pointer-events-auto"></div>
+
+        <button id="btn-close-book" title="Close (Esc)" class="absolute -top-3.5 -right-3.5 z-20 rounded-full px-3.5 py-1.5 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-lg transition-transform hover:scale-105" style="background:#fffaf0; color:#362316; border:2.5px solid #3c2516;">
+          <span id="btn-close-book-label">Close Book</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+
+        <div id="book-interior-grid" class="relative z-10 flex-1 grid grid-cols-1 md:grid-cols-2 rounded-[20px] overflow-hidden" style="border: 2.5px solid #3c2516; background: var(--ui-paper);">
+          <div id="open-book-left" class="book-paper-left flex flex-col p-4 sm:p-5 overflow-y-auto nice-scroll border-b md:border-b-0 md:border-r" style="border-color: rgba(105, 71, 42, 0.25);"></div>
+          <div id="open-book-right" class="book-paper-right relative flex flex-col p-4 sm:p-5 overflow-hidden"></div>
+          <div id="book-center-gutter" class="hidden md:block pointer-events-none absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-5"
+               style="background: linear-gradient(90deg, rgba(60,37,22,0) 0%, rgba(60,37,22,0.16) 48%, rgba(60,37,22,0.28) 50%, rgba(60,37,22,0.14) 52%, rgba(60,37,22,0) 100%);"></div>
+        </div>
+
+        <!-- Floating "+ Tie Ribbon" Popover anchored cleanly above the bottom bookmark ribbons -->
+        <div id="ribbon-tie-pop" class="hidden absolute bottom-3 left-1/2 -translate-x-1/2 z-30 rounded-2xl p-3 w-80 max-w-[calc(100%-24px)] shadow-2xl space-y-2" style="background:#fffaf0; border:2.5px solid #3c2516; color:#321f13;"></div>
+
+        <!-- Cross-Reference Silk Bookmark Ribbons dangling right out of the bottom of the open book! -->
+        <div id="book-bottom-ribbons" class="absolute left-5 right-5 top-full -mt-1 flex items-start justify-center gap-2.5 flex-wrap z-0"></div>
+      </div>
+
+      <div id="book-chapter-tabs" class="hidden sm:flex flex-col justify-start gap-2 py-7 -ml-3.5 z-10 overflow-y-auto max-h-full w-[124px] shrink-0"></div>
+    </div>
+  </div>
+
+  <!-- Full-size Image Lightbox -->
+  <div id="img-lightbox" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6 cursor-zoom-out" style="background: rgba(18, 10, 6, 0.84); backdrop-filter: blur(4px);">
+    <img id="img-lightbox-src" src="" alt="Full preview" class="max-w-full max-h-full rounded-2xl shadow-2xl" style="border: 3px solid #fffaf0;" />
+  </div>
+
+  <input id="page-image-picker" type="file" accept="image/*" multiple class="hidden" />
+
+  <!-- Bottom-Left Collapsible Floorplan Minimap + Camera Controls -->
+  <div class="fixed bottom-3 left-3 z-20 flex flex-col items-start gap-2 pointer-events-none">
+    <!-- Collapsible Corner Floorplan Minimap -->
+    <div id="minimap-panel" class="storybook-panel rounded-2xl overflow-hidden pointer-events-auto transition-all">
+      <div class="px-2.5 py-1 flex items-center justify-between gap-2 border-b" style="border-color: var(--ui-border);">
+        <span class="flex items-center gap-1.5 text-[11px] font-storybook font-bold" style="color: var(--ui-ink);">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--ui-accent);">
+            <circle cx="12" cy="12" r="9"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
+          </svg>
+          <span>Floorplan</span>
+        </span>
+        <button id="btn-toggle-minimap" type="button" title="Collapse or expand floorplan minimap" class="text-[11px] font-bold px-1.5 py-0.5 rounded-lg cursor-pointer bg-transparent border-0 hover:bg-black/10" style="color: var(--ui-muted);">&minus;</button>
+      </div>
+      <div id="minimap-body" class="p-1.5">
+        <svg id="minimap-svg" width="188" height="118" viewBox="0 0 188 118" class="block rounded-xl cursor-crosshair" style="background: var(--ui-surface-alt); border: 1px solid var(--ui-border);"></svg>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <div class="storybook-panel rounded-2xl px-2 py-1.5 flex items-center gap-1 pointer-events-auto">
+        <button id="btn-zoom-out" title="Zoom Out" class="storybook-btn rounded-xl w-7 h-7 flex items-center justify-center text-sm font-bold cursor-pointer">&minus;</button>
+        <span id="zoom-readout" class="text-xs font-mono tabular-nums px-1.5 min-w-[44px] text-center" style="color: var(--ui-muted);">100%</span>
+        <button id="btn-zoom-in" title="Zoom In" class="storybook-btn rounded-xl w-7 h-7 flex items-center justify-center text-sm font-bold cursor-pointer">+</button>
+        <div class="w-px h-4 mx-0.5" style="background: var(--ui-border);"></div>
+        <button id="btn-fit" title="Fit Entire Library (F)" class="storybook-btn rounded-xl px-2.5 h-7 text-xs font-medium cursor-pointer">Fit All</button>
+      </div>
+
+      <div class="hidden xl:flex storybook-panel rounded-2xl px-3 py-1.5 items-center gap-2 text-xs pointer-events-auto" style="color: var(--ui-muted);">
+        <span>Drag books to shelves, <strong style="color: var(--ui-ink);">Study Table</strong> or <strong style="color: var(--ui-ink);">Sorting Pile</strong></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOWER-RIGHT CORNER WOODEN TABLE TOP: Recycling Basket + Sorting Pile + Study Table -->
+  <div id="corner-tabletop-wrap" class="fixed bottom-3 z-40 flex items-end gap-2 pointer-events-none select-none max-w-[calc(100vw-24px)]">
+    <!-- Far-Left Station: Cozy Wicker Recycling Basket (Drop books, scrolls, or pages here to recycle!) -->
+    <div id="corner-recycle-zone" class="corner-station-box flex flex-col items-center pointer-events-auto">
+      <button id="btn-corner-recycle-inspect" type="button"
+              title="Recycling Basket — drag any book, scroll, or page here to recycle (click to view or restore)"
+              class="relative flex flex-col items-center justify-end px-2 pt-1 pb-1 bg-transparent border-0 cursor-pointer">
+        <span id="corner-recycle-badge" class="hidden absolute -top-0.5 right-0.5 z-10 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-extrabold shadow"
+              style="background:#b94a38; color:#fffaf2; border:1.5px solid #3c2516;">0</span>
+        <svg id="recycle-bin-svg" width="52" height="54" viewBox="0 0 54 56" class="drop-shadow-md">
+          <!-- Crumpled parchment peeking out (shown when bin has items) -->
+          <g id="recycle-bin-papers" style="display:none;">
+            <path d="M 15 17 L 19 8 L 27 12 L 24 18 Z" fill="#fffaf0" stroke="#3c2516" stroke-width="1.5" stroke-linejoin="round" />
+            <path d="M 25 16 L 31 6 L 39 11 L 36 18 Z" fill="#f3e1bd" stroke="#3c2516" stroke-width="1.5" stroke-linejoin="round" />
+            <path d="M 21 15 L 26 11 L 30 15" fill="none" stroke="#a68963" stroke-width="1.2" stroke-linecap="round" />
+          </g>
+          <!-- Hinged Wicker Rim / Lid -->
+          <g id="recycle-basket-lid">
+            <rect x="7" y="13" width="40" height="6.5" rx="3.2" fill="#b47b40" stroke="#3c2516" stroke-width="2" />
+            <line x1="11" y1="15.5" x2="43" y2="15.5" stroke="#e4b87a" stroke-width="1.3" stroke-linecap="round" opacity="0.75" />
+          </g>
+          <!-- Woven Wicker Basket Body -->
+          <path d="M 11 19 L 43 19 L 38.5 50 Q 27 53 15.5 50 Z" fill="#9a6432" stroke="#3c2516" stroke-width="2.1" stroke-linejoin="round" />
+          <!-- Woven cross-hatch texture -->
+          <path d="M 12.5 27 H 41.5 M 13.5 35 H 40.5 M 14.5 43 H 39.5" stroke="#6c421e" stroke-width="1.4" opacity="0.7" />
+          <path d="M 19 19.5 L 21 50 M 27 19.5 L 27 51 M 35 19.5 L 33 50" stroke="#c89154" stroke-width="1.4" opacity="0.65" />
+          <!-- Recycling emblem badge on front -->
+          <circle cx="27" cy="35" r="7.5" fill="#fff8e8" stroke="#3c2516" stroke-width="1.5" />
+          <path d="M 24 33.5 L 27 30.5 L 30 33.5 M 30.2 35.8 L 28.5 38.8 L 25.2 38.8 M 23.8 36.2 L 24 33.5" fill="none" stroke="#4f7c54" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        <span class="oak-tabletop-plank px-2 py-0.5 text-[10px] font-storybook font-bold mt-0.5" style="color:#fffaf0; text-shadow:0 1px 2px rgba(20,10,4,0.65);">Recycle</span>
+      </button>
+    </div>
+
+    <!-- Left Station on Tabletop: Little Pile of Papers & Unfiled Books -->
+    <div id="corner-pile-zone" class="corner-station-box flex flex-col items-center pointer-events-auto">
+      <!-- Visual Pile of Loose Papers & Books growing upward from the table top -->
+      <div id="corner-pile-stack" class="flex flex-col-reverse items-center justify-start px-2 pt-1 pb-0.5 max-h-[260px] overflow-y-auto nice-scroll"></div>
+      <!-- Carved Wooden Table Top Base for the Sorting Pile -->
+      <div id="corner-pile-ledge" class="oak-tabletop-plank w-[192px] px-2.5 py-1.5 flex items-center justify-between gap-1">
+        <button id="btn-corner-pile-inspect" type="button" title="Open Sorting Pile to file papers or shelve books" class="flex items-center gap-1.5 bg-transparent border-0 p-0 cursor-pointer text-left min-w-0">
+          <span id="corner-pile-badge" class="w-5 h-5 rounded-full flex items-center justify-center text-[10.5px] font-extrabold shrink-0" style="background:#c96843; color:#fffaf2; border:1.5px solid #3c2516;">0</span>
+          <span class="font-storybook font-bold text-[11.5px] truncate" style="color:#fffaf0; text-shadow:0 1px 2px rgba(20,10,4,0.65);">Sorting Pile</span>
+        </button>
+        <div class="flex items-center gap-1 shrink-0">
+          <button id="btn-corner-add-paper" type="button" title="Toss a new loose paper onto the pile" class="rounded-lg px-1.5 py-0.5 text-[10px] font-extrabold cursor-pointer transition-transform hover:scale-105" style="background:#fff8e8; color:#422815; border:1.5px solid #3c2516;">+Paper</button>
+          <button id="btn-corner-add-book" type="button" title="Toss a new unfiled book onto the pile" class="rounded-lg px-1.5 py-0.5 text-[10px] font-extrabold cursor-pointer transition-transform hover:scale-105" style="background:#f5c663; color:#352012; border:1.5px solid #3c2516;">+Book</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Station on Tabletop: Study Table Top (Holds up to 11 Stacked Books with Legible Uncovered Titles) -->
+    <div id="corner-study-zone" class="corner-station-box flex flex-col items-center pointer-events-auto">
+      <!-- Vertical Stack of up to 11 Flat Horizontal Books (zero overlap so every title is legible!) -->
+      <div id="corner-study-stack" class="flex flex-col-reverse items-center justify-start px-2 pt-1 pb-0.5"></div>
+      <!-- Carved Wooden Study Table Top Plank -->
+      <div id="corner-study-ledge" class="oak-tabletop-plank w-[248px] px-2.5 py-1.5 flex items-center justify-between gap-1">
+        <button id="btn-corner-study-inspect" type="button" title="Open Study Table manager (stack up to 11 books)" class="flex items-center gap-1.5 bg-transparent border-0 p-0 cursor-pointer text-left min-w-0 flex-1">
+          <span class="w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-extrabold shrink-0" style="background:#f5c663; color:#352012; border:1.5px solid #3c2516;">&#9733;</span>
+          <span class="font-storybook font-bold text-[11.5px] truncate" style="color:#fffaf0; text-shadow:0 1px 2px rgba(20,10,4,0.65);">Study Table</span>
+          <span id="corner-study-count" class="ml-auto text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-full" style="background:rgba(28,14,6,0.38); color:#ffe9b5; border:1px solid rgba(255,240,200,0.28);">0/11</span>
+        </button>
+        <button id="btn-corner-study-putback" type="button" title="Have little librarians put all Study Table books back on their shelves!" class="hidden rounded-lg px-1.5 py-0.5 text-[9.5px] font-extrabold cursor-pointer transition-transform hover:scale-105 shrink-0" style="background:#fff8e8; color:#422815; border:1.5px solid #3c2516;">Put Back</button>
+        <button id="btn-toggle-tabletop" type="button" title="Fold or expand tabletop stacks" class="w-5 h-5 rounded-lg flex items-center justify-center text-xs font-bold cursor-pointer bg-black/20 hover:bg-black/35 border-0 shrink-0" style="color:#fffaf0;">&#9662;</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="hide-toast fixed bottom-4 left-1/2 -translate-x-1/2 z-50 storybook-panel rounded-full px-4 py-2 text-xs font-semibold shadow-lg" style="color: var(--ui-ink);"></div>
+
+  <script defer src="/js/01-constants-dnd.js"></script>
+  <script defer src="/js/02-state-sync.js"></script>
+  <script defer src="/js/03-camera-layout.js"></script>
+  <script defer src="/js/04-map-svg.js"></script>
+  <script defer src="/js/05-audio-librarians.js"></script>
+  <script defer src="/js/06-rich-book-dnd.js"></script>
+  <script defer src="/js/07-inspector-crud.js"></script>
+  <script defer src="/js/08-search-bootstrap.js"></script>
+</body>
+</html>

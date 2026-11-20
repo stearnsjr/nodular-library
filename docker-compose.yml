@@ -1,0 +1,17 @@
+services:
+  storytellers-library:
+    build: .
+    container_name: storytellers-library
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data
+    environment:
+      - PORT=3000
+      - DATA_DIR=/data
+      - MAX_BACKUPS=20
+      - BACKUP_INTERVAL_SEC=60
+      - MAX_BODY_MB=50
+      # Uncomment to enable browser Basic Auth password protection:
+      # - LIBRARY_PASSWORD=choose-a-strong-password

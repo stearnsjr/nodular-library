@@ -1,0 +1,915 @@
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Trebuchet MS', 'Segoe UI', ui-rounded, system-ui, -apple-system, sans-serif;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-storybook {
+  font-family: 'Georgia', 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
+}
+
+/* Cozy atmosphere themes (never overriding :root host tokens) */
+body.lib-daylight {
+  background: radial-gradient(circle at 50% 46%, #f7f1e3 0%, #ede3ce 60%, #dfd2b8 100%);
+  color: #362316;
+  --ui-surface: rgba(255, 250, 240, 0.94);
+  --ui-surface-solid: #fffaf0;
+  --ui-surface-alt: #f3e8d2;
+  --ui-ink: #362316;
+  --ui-muted: #7a5c44;
+  --ui-border: #c5ab86;
+  --ui-shadow: rgba(60, 37, 22, 0.16);
+  --ui-accent: #c96843;
+  --ui-accent-hover: #b35531;
+  --ui-accent-soft: #f7dfd3;
+  --ui-paper: #fffdf7;
+  --ui-paper-alt: #faf2e1;
+  --ui-paper-line: rgba(168, 138, 102, 0.22);
+}
+
+body.lib-candlelight {
+  background: radial-gradient(circle at 50% 46%, #2a1f19 0%, #1d1511 58%, #130d0a 100%);
+  color: #f4e6ce;
+  --ui-surface: rgba(44, 31, 24, 0.94);
+  --ui-surface-solid: #2c1f18;
+  --ui-surface-alt: #3b2a20;
+  --ui-ink: #f4e6ce;
+  --ui-muted: #bba285;
+  --ui-border: #634936;
+  --ui-shadow: rgba(0, 0, 0, 0.45);
+  --ui-accent: #e09545;
+  --ui-accent-hover: #c97f32;
+  --ui-accent-soft: #4a3322;
+  --ui-paper: #f8ecd4;
+  --ui-paper-alt: #efe0c2;
+  --ui-paper-line: rgba(124, 92, 58, 0.2);
+}
+
+.storybook-panel {
+  background: var(--ui-surface);
+  border: 2px solid var(--ui-border);
+  box-shadow: 0 8px 24px var(--ui-shadow), inset 0 1px 0 rgba(255,255,255,0.22);
+  backdrop-filter: blur(10px);
+}
+
+.storybook-btn {
+  background: var(--ui-surface-alt);
+  border: 1.5px solid var(--ui-border);
+  color: var(--ui-ink);
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.storybook-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px var(--ui-shadow);
+}
+.storybook-btn:active {
+  transform: translateY(0px) scale(0.97);
+}
+.storybook-btn.active {
+  background: var(--ui-accent);
+  border-color: var(--ui-accent-hover);
+  color: #fffaf2;
+}
+
+.storybook-btn-primary {
+  background: var(--ui-accent);
+  border: 1.5px solid var(--ui-accent-hover);
+  color: #fffaf2;
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease;
+}
+.storybook-btn-primary:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.storybook-input {
+  background: var(--ui-surface-solid);
+  border: 1.5px solid var(--ui-border);
+  color: var(--ui-ink);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.storybook-input:focus {
+  border-color: var(--ui-accent);
+  box-shadow: 0 0 0 3px var(--ui-accent-soft);
+}
+
+/* Vintage inked rubber stamp styling */
+.library-stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: 'Georgia', serif;
+  font-weight: 700;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1.8px dashed currentColor;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.25);
+  transform: rotate(-1deg);
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease;
+}
+.library-stamp:hover {
+  transform: rotate(0deg) scale(1.04);
+  filter: brightness(0.96);
+}
+
+/* Card catalog tab bar in Central Rotunda */
+.catalog-tab {
+  background: var(--ui-surface-alt);
+  color: var(--ui-muted);
+  border: 1.5px solid var(--ui-border);
+  border-bottom: 0;
+  border-radius: 11px 11px 0 0;
+  transition: background-color 0.14s ease, color 0.14s ease, transform 0.14s ease;
+}
+.catalog-tab.active-cat-tab {
+  background: var(--ui-surface-solid);
+  color: var(--ui-ink);
+  font-weight: 800;
+  transform: translateY(-1px);
+}
+
+/* Canvas cursor & stationary-outer / animated-inner SVG micro-interactions */
+#canvas-wrap { cursor: grab; touch-action: none; }
+#canvas-wrap.dragging,
+#canvas-wrap.dragging-angle,
+#canvas-wrap.dragging-book { cursor: grabbing; }
+.node-interactive { cursor: pointer; }
+.swivel-hit { cursor: grab; }
+.swivel-hit:active { cursor: grabbing; }
+
+/* Strict separation: outer <g> holds SVG transform="translate()", inner <g> holds CSS hover transform */
+.hall-banner-inner {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.hall-banner-hit:hover .hall-banner-inner { transform: translateY(-4px) scale(1.045); }
+
+.quick-add-inner {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.quick-add-hit:hover .quick-add-inner { transform: translateY(-2px) scale(1.09); }
+
+.swivel-inner {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.18s ease;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.swivel-hit:hover .swivel-inner { transform: scale(1.16); filter: brightness(1.08); }
+
+.ribbon-tag-inner {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.ribbon-hit:hover .ribbon-tag-inner { transform: scale(1.08); }
+.ribbon-hit:hover .ribbon-strand { filter: brightness(1.12); }
+
+.spine-inner {
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.15s ease;
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+.spine-hit.is-search-match .spine-inner { transform: translateY(-7px) scale(1.03); }
+.spine-hit:hover .spine-inner { transform: translateY(-11px) scale(1.03); }
+.spine-hit.is-open .spine-inner { transform: translateY(-12px) scale(1.04); }
+.spine-hit.is-dragging-source .spine-inner { opacity: 0.32; transform: translateY(-4px) scale(0.96); }
+.is-search-dimmed { opacity: 0.42; transition: opacity 0.18s ease; }
+
+.spine-tooltip {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  transform: translateY(4px);
+}
+.spine-hit:hover .spine-tooltip { opacity: 1; transform: translateY(0px); }
+#canvas-wrap.dragging-book .spine-tooltip,
+#canvas-wrap.dragging-angle .spine-tooltip { opacity: 0 !important; }
+
+.shelf-slot-add-inner {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.18s ease;
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  opacity: 0.78;
+}
+.shelf-slot-add-hit:hover .shelf-slot-add-inner { transform: translateY(-4px) scale(1.05); opacity: 1; }
+
+.rotunda-desk-inner {
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.rotunda-hub:hover .rotunda-desk-inner { transform: scale(1.035); }
+
+.study-table-inner, .cart-inner, .fold-btn-inner {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.16s ease;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.study-room-hit:hover .study-table-inner { transform: scale(1.04); }
+.cart-hit:hover .cart-inner { transform: translateY(-3px) scale(1.06); }
+.fold-btn-hit:hover .fold-btn-inner { transform: scale(1.16); filter: brightness(1.06); }
+
+.study-book-inner {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.study-book-hit:hover .study-book-inner { transform: translateY(-5px) scale(1.07); }
+
+@keyframes moteDrift {
+  0%, 100% { transform: translate(0px, 0px); opacity: 0.25; }
+  50% { transform: translate(8px, -11px); opacity: 0.72; }
+}
+@keyframes lanternPulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.78; }
+}
+@keyframes searchPulse {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
+@keyframes pageTurnIn {
+  0% { opacity: 0.25; transform: translateX(10px) scale(0.985); }
+  100% { opacity: 1; transform: translateX(0px) scale(1); }
+}
+.mote { animation: moteDrift 6.5s ease-in-out infinite; }
+.lantern-halo { animation: lanternPulse 3.6s ease-in-out infinite; }
+.search-glow-aura { animation: searchPulse 1.8s ease-in-out infinite; pointer-events: none; }
+.page-turn-anim { animation: pageTurnIn 0.22s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mote, .lantern-halo, .search-glow-aura, .page-turn-anim { animation: none !important; }
+  .hall-banner-inner, .quick-add-inner, .swivel-inner, .ribbon-tag-inner, .spine-inner, .spine-tooltip, .shelf-slot-add-inner, .rotunda-desk-inner, .study-table-inner, .cart-inner, .fold-btn-inner, .study-book-inner { transition: none !important; }
+}
+
+#inspector-panel {
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
+}
+#inspector-panel.hidden-panel {
+  transform: translateX(calc(100% + 24px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+#book-modal { transition: opacity 0.22s ease; }
+#book-modal.book-closed,
+#book-modal.book-closed * { opacity: 0; pointer-events: none !important; }
+#book-spread-wrap { transition: transform 0.28s cubic-bezier(0.34, 1.4, 0.64, 1), opacity 0.22s ease; }
+#book-modal.book-closed #book-spread-wrap { transform: scale(0.84) translateY(20px); opacity: 0; }
+
+.book-paper-left {
+  background: linear-gradient(90deg, var(--ui-paper) 0%, var(--ui-paper) 92%, rgba(110, 74, 42, 0.14) 100%);
+  color: #321f13;
+}
+.book-paper-right {
+  background:
+    linear-gradient(90deg, rgba(110, 74, 42, 0.15) 0%, transparent 8%),
+    var(--ui-paper);
+  color: #321f13;
+}
+
+.book-stack-shadow {
+  box-shadow:
+    0 3px 0 #eadbc0,
+    0 6px 0 #d9c49f,
+    0 9px 0 #c9b086,
+    0 18px 42px rgba(24, 13, 6, 0.42);
+}
+
+.chapter-tab-btn {
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease;
+}
+.chapter-tab-btn:hover { transform: translateX(4px); filter: brightness(1.05); }
+.chapter-tab-btn.active-tab { transform: translateX(8px); box-shadow: 2px 3px 9px rgba(34, 18, 8, 0.26); }
+
+/* Dangling cross-reference silk bookmark ribbons hanging below the open book */
+.dangling-ribbon-item {
+  position: relative;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease;
+  transform-origin: top center;
+}
+.dangling-ribbon-item:hover {
+  transform: translateY(5px);
+  filter: brightness(1.05);
+}
+.dangling-ribbon-untie {
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.dangling-ribbon-item:hover .dangling-ribbon-untie {
+  opacity: 1;
+}
+.dangling-ribbon-untie:hover {
+  transform: scale(1.15);
+}
+
+.drag-grip { cursor: grab; opacity: 0.48; transition: opacity 0.14s ease; }
+.drag-grip:hover { opacity: 0.95; }
+.drag-grip:active { cursor: grabbing; }
+.dragging-item { opacity: 0.42 !important; }
+.drop-before { box-shadow: 0 -3px 0 0 #d69e42, 0 -5px 10px rgba(214, 158, 66, 0.35) !important; }
+.drop-after { box-shadow: 0 3px 0 0 #d69e42, 0 5px 10px rgba(214, 158, 66, 0.35) !important; }
+.drop-into { outline: 2.5px dashed #d69e42 !important; outline-offset: 1px; background: rgba(214, 158, 66, 0.14) !important; }
+
+.rich-page-editor {
+  user-select: text;
+  -webkit-user-select: text;
+  outline: none;
+  line-height: 1.72;
+  font-size: 13.5px;
+  color: #362215;
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent 25px,
+    var(--ui-paper-line) 25px,
+    var(--ui-paper-line) 26px
+  );
+  background-attachment: local;
+  min-height: 165px;
+  word-break: break-word;
+}
+.rich-page-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #9e8165;
+  font-style: italic;
+  pointer-events: none;
+}
+.rich-page-editor ul { list-style: disc; padding-left: 1.25rem; margin: 0.35rem 0; }
+
+/* External Web Hyperlinks — cool harbor-sky highlight stripe + dashed underline + ↗ arrow */
+.rich-page-editor a:not(.lib-internal-link) {
+  display: inline;
+  color: #1f5c7a;
+  text-decoration: none;
+  border-bottom: 1.5px dashed #3a80a2;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 5px;
+  padding: 1px 5px 1px 5px;
+  background: linear-gradient(180deg, rgba(58, 128, 162, 0.08) 0%, rgba(58, 128, 162, 0.17) 100%);
+  box-shadow: inset 2.5px 0 0 #3a80a2;
+  transition: background 0.14s ease, filter 0.14s ease;
+}
+.rich-page-editor a:not(.lib-internal-link)::after {
+  content: ' \2197';
+  font-size: 0.8em;
+  font-weight: 800;
+  opacity: 0.82;
+}
+.rich-page-editor a:not(.lib-internal-link):hover {
+  background: rgba(58, 128, 162, 0.25);
+  border-bottom-style: solid;
+}
+
+/* Internal Library Scroll Links — book-colored highlight stripe + parchment scroll curl */
+.rich-page-editor a.lib-internal-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--link-deep, #5d321c);
+  text-decoration: none;
+  font-family: Georgia, serif;
+  font-weight: 700;
+  font-size: 0.94em;
+  cursor: pointer;
+  padding: 1px 8px 1px 6px;
+  margin: 0 2px;
+  border-radius: 3px 10px 10px 3px;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 244, 0.72) 0%, var(--link-soft, rgba(209, 113, 82, 0.22)) 100%);
+  border: 1px solid var(--link-fill, #d17152);
+  border-left: 4px solid var(--link-fill, #d17152);
+  box-shadow: 0 1px 3px rgba(45, 26, 12, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  vertical-align: baseline;
+  line-height: 1.38;
+  transition: transform 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease;
+}
+.rich-page-editor a.lib-internal-link::before {
+  content: '\00A7';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--link-fill, #d17152);
+  color: #fffaf2;
+  font-family: Georgia, serif;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.rich-page-editor a.lib-internal-link:hover {
+  filter: brightness(0.97);
+  box-shadow: 0 2px 7px rgba(45, 26, 12, 0.2);
+  transform: translateY(-0.5px);
+}
+
+/* Interactive Bullet-Style Tasks inside Parchment Pages */
+.page-todo-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 0;
+  padding: 1px 2px;
+  line-height: 1.62;
+}
+.page-todo-box {
+  width: 16px;
+  height: 16px;
+  margin-top: 3.5px;
+  border-radius: 5px;
+  border: 2px solid #7a5538;
+  background: #fffdf8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+  transition: background 0.14s ease, border-color 0.14s ease, transform 0.14s ease;
+}
+.page-todo-box:hover { transform: scale(1.1); border-color: #5e8f64; }
+.page-todo-item[data-checked="true"] .page-todo-box {
+  background: #5e8f64;
+  border-color: #3f6644;
+}
+.page-todo-item[data-checked="true"] .page-todo-box::after {
+  content: '\2713';
+  color: #fffaf2;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+.page-todo-text {
+  display: block;
+  flex: 1;
+  min-width: 24px;
+  min-height: 1.55em;
+  outline: none;
+  word-break: break-word;
+}
+.page-todo-item[data-checked="true"] .page-todo-text {
+  text-decoration: line-through;
+  opacity: 0.58;
+}
+
+/* Non-destructive live search highlight inside open book pages */
+::highlight(lib-search-match) {
+  background-color: #ffe27a;
+  color: #2d1a0f;
+}
+.toc-match-glow {
+  box-shadow: 0 0 0 2px #f5a623, 0 0 10px rgba(245, 166, 35, 0.45) !important;
+  background: rgba(255, 226, 122, 0.26) !important;
+}
+
+.page-img-card {
+  display: inline-block;
+  position: relative;
+  margin: 8px 4px;
+  padding: 5px;
+  background: #fffdf8;
+  border: 2px solid #8a6544;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(45, 28, 15, 0.16);
+  max-width: 100%;
+  vertical-align: middle;
+  user-select: none;
+}
+.page-img-card img {
+  display: block;
+  max-width: 100%;
+  max-height: 215px;
+  border-radius: 7px;
+  cursor: zoom-in;
+  object-fit: contain;
+}
+.page-img-del {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #c9503b;
+  color: #fffaf2;
+  border: 2px solid #3c2516;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.page-img-card:hover .page-img-del { opacity: 1; }
+.page-img-del:hover { transform: scale(1.12); }
+
+.drop-active-ring {
+  box-shadow: inset 0 0 0 3px #c96843;
+  background-color: rgba(201, 104, 67, 0.08) !important;
+}
+
+/* Clean color input swatches */
+input[type="color"].swatch-picker {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 2px solid #3c2516;
+  border-radius: 999px;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  background: none;
+}
+input[type="color"].swatch-picker::-webkit-color-swatch-wrapper { padding: 0; }
+input[type="color"].swatch-picker::-webkit-color-swatch { border: none; border-radius: 999px; }
+
+.nice-scroll::-webkit-scrollbar { width: 6px; }
+.nice-scroll::-webkit-scrollbar-track { background: transparent; }
+.nice-scroll::-webkit-scrollbar-thumb { background: rgba(140, 108, 76, 0.45); border-radius: 999px; }
+
+#toast { transition: opacity 0.22s ease, transform 0.22s ease; }
+#toast.hide-toast { opacity: 0; transform: translate(-50%, 12px); pointer-events: none; }
+
+/* Lower-Right Corner Wooden Table Top (Sorting Pile of Papers & Books + 11-Book Study Table Stack) */
+#corner-tabletop-wrap {
+  right: 12px;
+  transition: right 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (min-width: 820px) {
+  #corner-tabletop-wrap.inspector-open-shift {
+    right: 392px;
+  }
+}
+
+.oak-tabletop-plank {
+  position: relative;
+  background: linear-gradient(180deg, #cf9358 0%, #b47640 46%, #8f582c 100%);
+  border: 2.5px solid #3c2516;
+  border-radius: 14px 14px 10px 10px;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 241, 210, 0.55),
+    inset 0 -3px 0 rgba(54, 30, 14, 0.45),
+    0 10px 24px rgba(24, 13, 6, 0.34);
+  color: #fffaf0;
+}
+body.lib-candlelight .oak-tabletop-plank {
+  background: linear-gradient(180deg, #865636 0%, #6d4328 50%, #52301b 100%);
+  border-color: #140b06;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 224, 172, 0.28),
+    inset 0 -3px 0 rgba(20, 11, 6, 0.58),
+    0 12px 28px rgba(8, 4, 2, 0.62);
+}
+
+/* Flat Horizontal Book Spines Stacked on the Lower-Right Study Table (up to 11 books, 100% legible titles!) */
+.study-stack-book {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 232px;
+  min-height: 23px;
+  padding: 2.5px 7px 2.5px 9px;
+  margin-top: -1.5px;
+  border-radius: 5px 7px 7px 5px;
+  border: 2px solid #3c2516;
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -2px 0 rgba(36, 18, 8, 0.34),
+    0 3px 7px rgba(25, 14, 6, 0.24);
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease, box-shadow 0.15s ease;
+}
+.study-stack-book:hover {
+  transform: translateX(-6px) scale(1.02) !important;
+  filter: brightness(1.06);
+  z-index: 30 !important;
+}
+.study-stack-book.is-open-book {
+  border-color: #ffd85a;
+  box-shadow: 0 0 0 2px #f5a623, 0 4px 12px rgba(245, 166, 35, 0.45);
+}
+.study-stack-book.is-glow-match {
+  box-shadow: 0 0 0 2.5px var(--glow-ring, #ffd85a), 0 0 14px var(--glow-ring, #f5a623);
+}
+.study-book-pages-trim {
+  width: 11px;
+  align-self: stretch;
+  min-height: 15px;
+  border-radius: 2px 4px 4px 2px;
+  background: repeating-linear-gradient(
+    180deg,
+    #fffaf0 0px,
+    #fffaf0 2px,
+    #dec7a1 2px,
+    #dec7a1 3px
+  );
+  border-left: 1.5px solid #3c2516;
+  flex-shrink: 0;
+}
+
+/* Sorting Pile Items (Loose Parchment Papers & Unfiled Books stacked in the pile) */
+.pile-book-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 174px;
+  min-height: 22px;
+  padding: 2.5px 6px 2.5px 8px;
+  margin-top: -2px;
+  border-radius: 5px 7px 7px 5px;
+  border: 2px solid #3c2516;
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -2px 0 rgba(36, 18, 8, 0.32),
+    0 3px 7px rgba(25, 14, 6, 0.25);
+  cursor: grab;
+  user-select: none;
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease;
+}
+.pile-book-card:active { cursor: grabbing; }
+.pile-book-card:hover {
+  transform: translateY(-2px) scale(1.03) !important;
+  filter: brightness(1.06);
+  z-index: 30 !important;
+}
+
+.pile-paper-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 168px;
+  min-height: 21px;
+  padding: 2px 7px 2px 8px;
+  margin-top: -3px;
+  background:
+    linear-gradient(135deg, transparent 0%, transparent calc(100% - 9px), #dcc299 calc(100% - 9px), #fdf4e2 100%),
+    linear-gradient(180deg, #fffdf6 0%, #f5e6c8 100%);
+  color: #362215;
+  border: 1.8px solid #5a3b22;
+  border-radius: 3px 9px 4px 4px;
+  box-shadow:
+    0 2px 5px rgba(28, 15, 6, 0.22),
+    inset 0 -1px 0 rgba(168, 128, 82, 0.35);
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.15s ease;
+}
+.pile-paper-card:hover {
+  transform: translateY(-3px) scale(1.035) !important;
+  background: #fffdf8;
+  z-index: 30 !important;
+}
+.pile-paper-card.is-glow-match, .pile-book-card.is-glow-match {
+  box-shadow: 0 0 0 2.5px var(--glow-ring, #ffd85a), 0 0 14px var(--glow-ring, #f5a623);
+}
+
+.corner-station-box {
+  border-radius: 18px;
+  padding: 4px;
+  transition: box-shadow 0.16s ease, background-color 0.16s ease, transform 0.16s ease;
+}
+.corner-station-box.corner-drop-active {
+  background-color: rgba(245, 198, 99, 0.24);
+  box-shadow: 0 0 0 3px #f5c663, 0 0 20px rgba(245, 198, 99, 0.55);
+  transform: translateY(-3px);
+}
+.study-stack-book.study-drop-active {
+  outline: 3px dashed #ffd85a !important;
+  outline-offset: 1px;
+  filter: brightness(1.15);
+  transform: translateX(-8px) scale(1.04) !important;
+}
+
+/* Cozy Wicker Recycling Basket Drop Target */
+#corner-recycle-zone {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.16s ease, background-color 0.16s ease;
+}
+#corner-recycle-zone:hover {
+  transform: translateY(-2px);
+}
+#corner-recycle-zone.recycle-drop-active {
+  background-color: rgba(214, 82, 62, 0.22);
+  box-shadow: 0 0 0 3px #e05a47, 0 0 22px rgba(224, 90, 71, 0.55);
+  transform: translateY(-6px) scale(1.08);
+}
+#corner-recycle-zone.recycle-drop-active #recycle-basket-lid {
+  transform: translateY(-4px) rotate(-14deg);
+}
+#recycle-basket-lid {
+  transform-box: fill-box;
+  transform-origin: left center;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Bigger 8.5x11 Letter-Sheet Proportions for Single-Page, Scroll, and Open Book Spread */
+#book-spread-wrap.is-single-page-mode {
+  max-width: min(740px, calc((100vh - 96px) * 0.785), calc(100vw - 32px)) !important;
+  height: min(880px, calc(100vh - 96px)) !important;
+}
+#book-spread-wrap.has-ref-peek {
+  max-width: 1540px !important;
+}
+#book-spread-wrap.is-single-page-mode.has-ref-peek {
+  max-width: min(1090px, calc(100vw - 32px)) !important;
+}
+#book-spread-wrap.is-single-page-mode #open-book-left,
+#book-spread-wrap.is-single-page-mode #book-center-gutter {
+  display: none !important;
+}
+#book-spread-wrap.is-single-page-mode #book-interior-grid {
+  grid-template-columns: 1fr !important;
+}
+#book-spread-wrap.is-single-page-mode #book-chapter-tabs {
+  display: none !important;
+}
+/* Unrolled Parchment Scroll visual frame (subtle turned-wood scroll rods top & bottom) */
+#book-spread-wrap.is-scroll-mode #book-cover-shell {
+  border-radius: 22px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+  box-shadow:
+    0 24px 60px rgba(20, 10, 4, 0.48),
+    inset 0 8px 0 rgba(78, 46, 22, 0.34),
+    inset 0 -8px 0 rgba(78, 46, 22, 0.34);
+}
+#open-page-editor.rich-page-editor {
+  font-size: 14.5px;
+  line-height: 1.65;
+}
+
+/* Cozy Parchment D&D 5e / 2024 Character Sheet Styles */
+.dnd-box {
+  background: rgba(255, 252, 244, 0.78);
+  border: 1.6px solid #7d5736;
+  border-radius: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+.dnd-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7a5638;
+}
+.dnd-input {
+  background: transparent;
+  border: 0;
+  border-bottom: 1.2px solid rgba(125, 87, 54, 0.3);
+  color: #2c190d;
+  outline: none;
+  width: 100%;
+}
+.dnd-input:focus {
+  border-bottom-color: #b85d32;
+  background: rgba(255, 248, 232, 0.7);
+}
+.dnd-ability-card {
+  background: linear-gradient(180deg, #fffdf7 0%, #f7ead1 100%);
+  border: 1.8px solid #5c3a21;
+  border-radius: 12px;
+  padding: 4px 4px 5px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.dnd-roll-btn {
+  cursor: pointer;
+  transition: transform 0.12s ease, background-color 0.12s ease;
+}
+.dnd-roll-btn:hover {
+  transform: scale(1.06);
+  background: rgba(245, 198, 99, 0.35) !important;
+}
+.dnd-prof-pip {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  border: 1.6px solid #5c3a21;
+  background: #fffaf0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+}
+.dnd-prof-pip.is-prof {
+  background: #5c3a21;
+}
+.dnd-prof-pip.is-exp {
+  background: #c96843;
+  border-color: #5c3a21;
+  box-shadow: 0 0 0 1.5px #f5c663;
+}
+.dnd-slot-pip {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1.6px solid #5c3a21;
+  background: #fffaf0;
+  cursor: pointer;
+  transition: transform 0.1s ease, background-color 0.12s ease;
+}
+.dnd-slot-pip.is-used {
+  background: #8b3d2b;
+  border-color: #3c2516;
+}
+.dnd-roll-banner {
+  background: linear-gradient(90deg, #3a2315 0%, #523320 100%);
+  color: #fff8e8;
+  border: 1.8px solid #d9a143;
+  border-radius: 12px;
+}
+.dnd-roll-banner.is-crit {
+  border-color: #ffd85a;
+  box-shadow: 0 0 14px rgba(255, 216, 90, 0.55);
+}
+.dnd-roll-banner.is-fumble {
+  border-color: #e05a47;
+  box-shadow: 0 0 12px rgba(224, 90, 71, 0.45);
+}
+
+/* Ambient Sleeping Library Cat ("Mochi") animations */
+@keyframes catBreathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.045, 0.965); }
+}
+@keyframes catTailWag {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(9deg); }
+}
+@keyframes catZzz {
+  0% { opacity: 0; transform: translate(0px, 0px) scale(0.75); }
+  30% { opacity: 0.85; }
+  100% { opacity: 0; transform: translate(8px, -16px) scale(1.15); }
+}
+.library-cat-body { transform-box: fill-box; transform-origin: center; animation: catBreathe 3.8s ease-in-out infinite; }
+.library-cat-tail { transform-box: fill-box; transform-origin: left center; animation: catTailWag 4.4s ease-in-out infinite; }
+.library-cat-z1 { animation: catZzz 3.2s ease-out infinite; }
+.library-cat-z2 { animation: catZzz 3.2s ease-out 1.5s infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .library-cat-body, .library-cat-tail, .library-cat-z1, .library-cat-z2 { animation: none !important; }
+}
+
+/* Corkboard / Storyboard Index-Card Grid View inside Open Book */
+#book-spread-wrap.is-corkboard-mode #open-book-left,
+#book-spread-wrap.is-corkboard-mode #book-center-gutter {
+  display: none !important;
+}
+#book-spread-wrap.is-corkboard-mode #book-interior-grid {
+  grid-template-columns: 1fr !important;
+}
+.corkboard-surface {
+  background:
+    radial-gradient(rgba(82, 48, 22, 0.15) 1px, transparent 1px),
+    linear-gradient(180deg, #d7b281 0%, #c89f6b 100%);
+  background-size: 14px 14px, 100% 100%;
+}
+.corkboard-card {
+  background: linear-gradient(180deg, #fffdf7 0%, #f7ebd3 100%);
+  border: 2px solid #5a3b22;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(34, 18, 8, 0.22);
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.16s ease;
+  cursor: pointer;
+}
+.corkboard-card:hover {
+  transform: translateY(-3px) rotate(-0.5deg);
+  box-shadow: 0 8px 18px rgba(34, 18, 8, 0.3);
+}
+
+/* Top Outer Rim Book Flipper Tabs (Hall Books & Study Table Books) */
+.top-book-flipper {
+  background: #fffaf0;
+  color: #362215;
+  border: 2.2px solid #3c2516;
+  border-bottom: 0;
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -2px 8px rgba(24, 13, 6, 0.18);
+}
