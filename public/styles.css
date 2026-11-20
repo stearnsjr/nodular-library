@@ -140,6 +140,7 @@ body.lib-candlelight {
 
 /* Canvas cursor & stationary-outer / animated-inner SVG micro-interactions */
 #canvas-wrap { cursor: grab; touch-action: none; }
+#library-svg { touch-action: none; }
 #canvas-wrap.dragging,
 #canvas-wrap.dragging-angle,
 #canvas-wrap.dragging-book { cursor: grabbing; }
@@ -827,6 +828,14 @@ body.lib-candlelight .oak-tabletop-plank {
   border-color: #5c3a21;
   box-shadow: 0 0 0 1.5px #f5c663;
 }
+.dnd-prof-pip.is-ds-pass {
+  background: #3e7a46;
+  border-color: #244c2a;
+}
+.dnd-prof-pip.is-ds-fail {
+  background: #a83324;
+  border-color: #5e1a12;
+}
 .dnd-slot-pip {
   width: 14px;
   height: 14px;
@@ -912,4 +921,307 @@ body.lib-candlelight .oak-tabletop-plank {
   border-bottom: 0;
   border-radius: 14px 14px 0 0;
   box-shadow: 0 -2px 8px rgba(24, 13, 6, 0.18);
+}
+
+/* Mobile TOC / Chapters Drawer Overlay inside Single-Page Open Book */
+#book-spread-wrap.is-single-page-mode.mobile-toc-open #open-book-left {
+  display: flex !important;
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+/* ============================================================
+   MOBILE & TABLET RESPONSIVE LAYOUT (<= 768px)
+   ============================================================ */
+@media (max-width: 768px) {
+  html, body {
+    height: 100dvh;
+    overscroll-behavior: none;
+  }
+
+  /* Safe-area aware compact top toolbar */
+  #top-toolbar {
+    top: calc(env(safe-area-inset-top, 0px) + 6px) !important;
+    left: calc(env(safe-area-inset-left, 0px) + 6px) !important;
+    right: calc(env(safe-area-inset-right, 0px) + 6px) !important;
+    gap: 6px !important;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #toolbar-left {
+    padding: 6px 10px !important;
+    border-radius: 14px !important;
+    scrollbar-width: none;
+  }
+  #toolbar-left::-webkit-scrollbar { display: none; }
+  #toolbar-title { font-size: 13px !important; }
+
+  #toolbar-actions {
+    padding: 5px 8px !important;
+    border-radius: 14px !important;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    max-width: 100%;
+  }
+  #toolbar-actions::-webkit-scrollbar { display: none; }
+  #toolbar-actions > *,
+  #toolbar-actions button {
+    flex-shrink: 0;
+  }
+  #toolbar-actions button {
+    min-height: 34px;
+  }
+  #search-input {
+    width: 132px !important;
+    min-height: 34px;
+    font-size: 13px !important;
+  }
+
+  /* Fixed full-width dropdowns on mobile so horizontal toolbar scroll never clips them */
+  #menu-tasks,
+  #menu-templates,
+  #menu-io,
+  #search-results {
+    position: fixed !important;
+    left: calc(env(safe-area-inset-left, 0px) + 10px) !important;
+    right: calc(env(safe-area-inset-right, 0px) + 10px) !important;
+    top: calc(env(safe-area-inset-top, 0px) + 106px) !important;
+    width: auto !important;
+    max-width: none !important;
+    max-height: 60dvh !important;
+    margin-top: 0 !important;
+  }
+
+  #stamp-lens-bar {
+    top: calc(env(safe-area-inset-top, 0px) + 106px) !important;
+    max-width: calc(100vw - 16px);
+  }
+
+  /* Side Inspector & Card Index -> Full-Width Bottom-Sheet Drawer */
+  #inspector-panel {
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 82dvh;
+    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 52px);
+    border-radius: 24px 24px 0 0 !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+    border-bottom: 0 !important;
+    z-index: 45 !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  #inspector-panel.hidden-panel {
+    transform: translateY(105%) !important;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .mobile-sheet-handle {
+    display: flex !important;
+  }
+  .mobile-close-label {
+    display: inline !important;
+  }
+  #btn-close-inspector {
+    min-height: 38px;
+    padding: 6px 10px !important;
+  }
+
+  /* Hide minimap & shrink secondary bottom floating widgets so canvas stays unobstructed */
+  #minimap-panel {
+    display: none !important;
+  }
+  #bottom-left-controls {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px) !important;
+    left: calc(env(safe-area-inset-left, 0px) + 8px) !important;
+  }
+  #zoom-readout {
+    display: none !important;
+  }
+  #btn-zoom-in,
+  #btn-zoom-out,
+  #btn-fit {
+    min-height: 36px;
+    min-width: 34px;
+  }
+
+  #corner-tabletop-wrap {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 8px) !important;
+    right: calc(env(safe-area-inset-right, 0px) + 8px) !important;
+    gap: 4px !important;
+    z-index: 25 !important;
+  }
+  .corner-station-box {
+    padding: 1px !important;
+  }
+  #corner-recycle-zone #recycle-bin-svg {
+    width: 28px !important;
+    height: 30px !important;
+  }
+  #corner-recycle-zone .oak-tabletop-plank {
+    display: none !important;
+  }
+  #corner-pile-ledge,
+  #corner-study-ledge {
+    width: auto !important;
+    padding: 6px 8px !important;
+    border-radius: 12px !important;
+  }
+  #btn-corner-add-paper,
+  #btn-corner-add-book,
+  #btn-corner-study-putback {
+    display: none !important;
+  }
+  #corner-pile-ledge .font-storybook,
+  #corner-study-ledge .font-storybook {
+    display: none !important;
+  }
+  #corner-pile-stack,
+  #corner-study-stack {
+    max-height: 160px !important;
+  }
+  .study-stack-book {
+    width: 170px !important;
+  }
+  .pile-book-card,
+  .pile-paper-card {
+    width: 146px !important;
+  }
+
+  /* Full-Screen Mobile Open Book Modal */
+  #book-modal {
+    padding: calc(env(safe-area-inset-top, 0px) + 6px) calc(env(safe-area-inset-right, 0px) + 6px) calc(env(safe-area-inset-bottom, 0px) + 6px) calc(env(safe-area-inset-left, 0px) + 6px) !important;
+  }
+  #book-spread-wrap,
+  #book-spread-wrap.is-single-page-mode,
+  #book-spread-wrap.has-ref-peek,
+  #book-spread-wrap.is-single-page-mode.has-ref-peek {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    margin: 0 !important;
+    flex-direction: column;
+  }
+  #book-cover-shell {
+    padding: 8px !important;
+    border-radius: 18px !important;
+    height: 100%;
+  }
+  #book-interior-grid {
+    border-radius: 13px !important;
+  }
+  #open-book-left,
+  #open-book-right {
+    padding: 12px !important;
+  }
+  #btn-close-book {
+    top: 8px !important;
+    right: 8px !important;
+    min-height: 36px;
+    padding: 5px 10px !important;
+    font-size: 11.5px !important;
+  }
+  #book-top-flippers,
+  #book-bottom-ribbons,
+  #book-chapter-tabs {
+    display: none !important;
+  }
+  #book-ref-peek:not(.hidden) {
+    width: 100% !important;
+    max-height: 34dvh;
+    border-radius: 16px !important;
+  }
+  #open-prev-page,
+  #open-next-page {
+    min-height: 40px;
+    padding: 8px 12px !important;
+  }
+  #toast {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 62px) !important;
+    max-width: calc(100vw - 24px);
+    text-align: center;
+  }
+}
+
+/* ============================================================
+   TOUCH-FRIENDLY TARGETS (>= 40px) FOR MOBILE & COARSE POINTERS
+   ============================================================ */
+@media (max-width: 768px), (pointer: coarse) {
+  .dnd-hp-btn,
+  [data-dnd-hp-delta] {
+    min-height: 40px;
+    min-width: 54px;
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+  }
+
+  .dnd-roll-btn {
+    min-height: 40px;
+    min-width: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px !important;
+  }
+
+  .dnd-prof-pip {
+    width: 40px;
+    height: 40px;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    position: relative;
+    margin: -6px -4px;
+  }
+  .dnd-prof-pip::after {
+    content: '';
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    border: 2px solid #5c3a21;
+    background: #fffaf0;
+    display: block;
+  }
+  .dnd-prof-pip.is-prof::after {
+    background: #5c3a21;
+  }
+  .dnd-prof-pip.is-exp::after {
+    background: #c96843;
+    border-color: #5c3a21;
+    box-shadow: 0 0 0 2px #f5c663;
+  }
+  .dnd-prof-pip.is-ds-pass::after {
+    background: #3e7a46;
+    border-color: #244c2a;
+  }
+  .dnd-prof-pip.is-ds-fail::after {
+    background: #a83324;
+    border-color: #5e1a12;
+  }
+
+  .dnd-slot-pip {
+    min-width: 40px;
+    min-height: 40px;
+    border-radius: 10px;
+  }
+
+  .insp-organize-bar button,
+  .insp-organize-bar select {
+    min-height: 36px;
+  }
+
+  .dangling-ribbon-untie,
+  .page-img-del {
+    opacity: 1 !important;
+  }
 }

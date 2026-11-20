@@ -5,6 +5,7 @@ const inspPanel = document.getElementById('inspector-panel');
 const inspBody = document.getElementById('inspector-body');
 const inspBadge = document.getElementById('insp-badge');
 const inspHeaderTitle = document.getElementById('insp-header-title');
+let hallOrganizeMode = false;
 
 const cornerTabletopWrap = document.getElementById('corner-tabletop-wrap');
 function openInspector() {
@@ -2078,6 +2079,7 @@ function renderInspector() {
       <div class="flex items-center justify-between gap-1.5 flex-wrap">
         <span class="text-xs font-semibold" style="color:var(--ui-muted);">Shelf Items (${hall.books.length})</span>
         <div class="flex items-center gap-1 flex-wrap">
+          ${hall.books.length > 0 ? `<button id="insp-toggle-organize" type="button" class="storybook-btn ${hallOrganizeMode ? 'active' : ''} rounded-xl px-2 py-1 text-[11px] font-bold cursor-pointer" title="Toggle tap buttons to reorder, move, or recycle shelf items">${hallOrganizeMode ? 'Done' : 'Organize'}</button>` : ''}
           <button id="insp-add-dndchar" class="storybook-btn rounded-xl px-2 py-1 text-[11px] font-bold cursor-pointer" title="Create a 3-page D&amp;D 5e / 2024 Character Sheet Book with Session Notes">+ D&amp;D</button>
           <button id="insp-add-scroll" class="storybook-btn rounded-xl px-2 py-1 text-[11px] font-semibold cursor-pointer" title="Shelve a single-page parchment Scroll">+ Scroll</button>
           <button id="insp-add-book" class="storybook-btn-primary rounded-xl px-2.5 py-1 text-[11px] font-semibold cursor-pointer">+ Book</button>
@@ -2089,17 +2091,32 @@ function renderInspector() {
           const isSc = isScrollItem(b);
           const isDnd = isCharacterBook(b);
           return `
-            <button data-open-book="${b.id}" data-book-idx="${idx}" draggable="true" class="insp-book-row w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs storybook-btn cursor-pointer text-left">
-              <span class="flex items-center gap-2 font-semibold truncate">
-                <span class="drag-grip shrink-0">${GRIP_SVG}</span>
-                ${isSc
-                  ? `<span class="w-3 h-4 rounded-full shrink-0 flex items-center justify-center" style="background:#f8ecd2; border:1.4px solid ${bsw.fill};"><span class="w-full h-1" style="background:${bsw.fill};"></span></span>`
-                  : `<span class="w-3 h-4 rounded-sm shrink-0" style="background:${bsw.fill}; border:1px solid #3c2516;"></span>`
-                }
-                <span class="truncate">${esc(b.title)}${b.pinned ? ' &#9733;' : ''}</span>
-              </span>
-              <span class="text-[11px] shrink-0" style="color:var(--ui-muted);">${isSc ? 'Scroll' : (isDnd ? `D&amp;D ${b.dndChar.edition === '5e' ? '5e' : '24'}` : `${b.pages.length} pp`)} &rarr;</span>
-            </button>
+            <div class="space-y-1">
+              <button data-open-book="${b.id}" data-book-idx="${idx}" draggable="true" class="insp-book-row w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs storybook-btn cursor-pointer text-left">
+                <span class="flex items-center gap-2 font-semibold truncate">
+                  <span class="drag-grip shrink-0">${GRIP_SVG}</span>
+                  ${isSc
+                    ? `<span class="w-3 h-4 rounded-full shrink-0 flex items-center justify-center" style="background:#f8ecd2; border:1.4px solid ${bsw.fill};"><span class="w-full h-1" style="background:${bsw.fill};"></span></span>`
+                    : `<span class="w-3 h-4 rounded-sm shrink-0" style="background:${bsw.fill}; border:1px solid #3c2516;"></span>`
+                  }
+                  <span class="truncate">${esc(b.title)}${b.pinned ? ' &#9733;' : ''}</span>
+                </span>
+                <span class="text-[11px] shrink-0" style="color:var(--ui-muted);">${isSc ? 'Scroll' : (isDnd ? `D&amp;D ${b.dndChar.edition === '5e' ? '5e' : '24'}` : `${b.pages.length} pp`)} &rarr;</span>
+              </button>
+              ${hallOrganizeMode ? `
+                <div class="insp-organize-bar flex items-center gap-1 flex-wrap px-1 pb-1">
+                  <button type="button" data-insp-move-up="${b.id}" data-insp-idx="${idx}" ${idx === 0 ? 'disabled' : ''} title="Move earlier on shelf" class="storybook-btn rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer disabled:opacity-35">&uarr;</button>
+                  <button type="button" data-insp-move-down="${b.id}" data-insp-idx="${idx}" ${idx === hall.books.length - 1 ? 'disabled' : ''} title="Move later on shelf" class="storybook-btn rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer disabled:opacity-35">&darr;</button>
+                  <button type="button" data-insp-pin-book="${b.id}" title="${b.pinned ? 'Remove from Study Table' : 'Stack on Study Table'}" class="storybook-btn ${b.pinned ? 'active' : ''} rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer">${b.pinned ? '&#9733; Table' : '&#9734; Table'}</button>
+                  <select data-insp-move-hall="${b.id}" title="Move to another Hall" class="storybook-input rounded-lg px-1.5 py-1 text-[11px] max-w-[130px] cursor-pointer">
+                    <option value="" selected>Move to Hall…</option>
+                    ${buildHallOptionsHTML(hall.id)}
+                  </select>
+                  <button type="button" data-insp-to-pile="${b.id}" title="Move to Sorting Pile" class="storybook-btn rounded-lg px-2 py-1 text-[11px] font-semibold cursor-pointer">&rarr; Pile</button>
+                  <button type="button" data-insp-recycle-book="${b.id}" title="Send to Recycling Basket" class="rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer bg-transparent border border-red-400/50 text-red-600 hover:bg-red-500/10">Recycle</button>
+                </div>
+              ` : ''}
+            </div>
           `;
         }).join('') || `<p class="text-xs italic" style="color:var(--ui-muted);">Shelf is empty — add a book, scroll, or D&amp;D sheet to begin!</p>`}
       </div>
@@ -2131,9 +2148,43 @@ function renderInspector() {
   inspBody.querySelectorAll('[data-jump-sub]').forEach(btn => {
     btn.addEventListener('click', () => selectNode('hall', btn.dataset.jumpSub, true));
   });
+  document.getElementById('insp-toggle-organize')?.addEventListener('click', () => {
+    hallOrganizeMode = !hallOrganizeMode;
+    renderInspector();
+  });
   document.getElementById('insp-add-dndchar').addEventListener('click', () => createCharacterBook(hall.id, '2024'));
   document.getElementById('insp-add-scroll').addEventListener('click', () => createScroll(hall.id));
   document.getElementById('insp-add-book').addEventListener('click', () => createBook(hall.id));
+
+  inspBody.querySelectorAll('[data-insp-move-up]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.dataset.inspIdx);
+      if (idx > 0) reorderOrMoveBook(hall.id, btn.dataset.inspMoveUp, hall.id, idx - 1);
+    });
+  });
+  inspBody.querySelectorAll('[data-insp-move-down]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.dataset.inspIdx);
+      if (idx < hall.books.length - 1) reorderOrMoveBook(hall.id, btn.dataset.inspMoveDown, hall.id, idx + 2);
+    });
+  });
+  inspBody.querySelectorAll('[data-insp-pin-book]').forEach(btn => {
+    btn.addEventListener('click', () => togglePinBook(btn.dataset.inspPinBook));
+  });
+  inspBody.querySelectorAll('[data-insp-move-hall]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const destId = sel.value;
+      if (!destId || destId === hall.id) return;
+      const dest = findHallInfo(destId);
+      if (dest) reorderOrMoveBook(hall.id, sel.dataset.inspMoveHall, destId, dest.hall.books.length);
+    });
+  });
+  inspBody.querySelectorAll('[data-insp-to-pile]').forEach(btn => {
+    btn.addEventListener('click', () => moveBookToCart(hall.id, btn.dataset.inspToPile));
+  });
+  inspBody.querySelectorAll('[data-insp-recycle-book]').forEach(btn => {
+    btn.addEventListener('click', () => recycleBook(hall.id, btn.dataset.inspRecycleBook));
+  });
 
   inspBody.querySelectorAll('.insp-book-row').forEach(row => {
     const bookId = row.dataset.openBook, idx = Number(row.dataset.bookIdx);

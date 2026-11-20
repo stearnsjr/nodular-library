@@ -726,6 +726,10 @@ function showToast(msg) {
 // ============================================================
 // 11. BOOTSTRAP
 // ============================================================
+if (window.innerWidth <= 768) {
+  minimapCollapsed = true;
+  tabletopCollapsed = true;
+}
 pushHistory();
 applyMinimapCollapsedState();
 applyAtmosphere(detectHostDark());

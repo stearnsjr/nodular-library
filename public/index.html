@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>The Storyteller's Library — Illustrated Mind Map</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
+  <meta name="theme-color" content="#c96843" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Library" />
   <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -67,8 +75,8 @@
   </div>
 
   <!-- Top Floating Storybook Toolbar -->
-  <header class="fixed top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
-    <div class="storybook-panel rounded-2xl px-3.5 py-2 flex items-center gap-2.5 pointer-events-auto max-w-full overflow-x-auto">
+  <header id="top-toolbar" class="fixed top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+    <div id="toolbar-left" class="storybook-panel rounded-2xl px-3.5 py-2 flex items-center gap-2.5 pointer-events-auto max-w-full overflow-x-auto">
       <button id="btn-home-hub" title="Open Central Rotunda & Card Index" class="flex items-center gap-2 shrink-0 cursor-pointer bg-transparent border-0 p-0 text-left">
         <span class="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style="background: var(--ui-accent-soft); border: 1.5px solid var(--ui-border);">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="color: var(--ui-accent);">
@@ -82,7 +90,7 @@
       <nav id="breadcrumbs" class="flex items-center gap-1 text-xs whitespace-nowrap" style="color: var(--ui-muted);"></nav>
     </div>
 
-    <div class="storybook-panel rounded-2xl px-2.5 py-1.5 flex items-center gap-1.5 pointer-events-auto relative">
+    <div id="toolbar-actions" class="storybook-panel rounded-2xl px-2.5 py-1.5 flex items-center gap-1.5 pointer-events-auto relative">
       <!-- Quick Card Index button -->
       <button id="btn-card-index" title="Open Central Card Index (Colors, Stamps & Ribbons)" class="storybook-btn rounded-xl px-2.5 py-1.5 text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -232,12 +240,16 @@
 
   <!-- Right Slide-Over Inspector (Card Index, Study Table, Sorting Pile, or Hall Editor) -->
   <aside id="inspector-panel" class="hidden-panel fixed top-20 right-3 bottom-3 w-[372px] max-w-[calc(100vw-24px)] z-20 storybook-panel rounded-3xl flex flex-col overflow-hidden">
-    <div class="px-4 py-3 flex items-center justify-between border-b" style="border-color: var(--ui-border);">
+    <div class="mobile-sheet-handle hidden justify-center pt-2 pb-0.5 shrink-0">
+      <span class="w-10 h-1 rounded-full" style="background: var(--ui-border);"></span>
+    </div>
+    <div class="px-4 py-3 flex items-center justify-between border-b shrink-0" style="border-color: var(--ui-border);">
       <div class="flex items-center gap-2 min-w-0">
         <span id="insp-badge" class="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0" style="background: var(--ui-accent-soft); color: var(--ui-accent);">Hall</span>
         <span id="insp-header-title" class="font-storybook font-bold text-sm truncate">Details</span>
       </div>
-      <button id="btn-close-inspector" title="Close panel (Esc)" class="storybook-btn rounded-xl p-1 cursor-pointer">
+      <button id="btn-close-inspector" title="Close panel (Esc)" class="storybook-btn rounded-xl p-1 flex items-center gap-1 cursor-pointer shrink-0">
+        <span class="mobile-close-label hidden text-xs font-bold pl-1">Close</span>
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
     </div>
@@ -285,7 +297,7 @@
   <input id="page-image-picker" type="file" accept="image/*" multiple class="hidden" />
 
   <!-- Bottom-Left Collapsible Floorplan Minimap + Camera Controls -->
-  <div class="fixed bottom-3 left-3 z-20 flex flex-col items-start gap-2 pointer-events-none">
+  <div id="bottom-left-controls" class="fixed bottom-3 left-3 z-20 flex flex-col items-start gap-2 pointer-events-none">
     <!-- Collapsible Corner Floorplan Minimap -->
     <div id="minimap-panel" class="storybook-panel rounded-2xl overflow-hidden pointer-events-auto transition-all">
       <div class="px-2.5 py-1 flex items-center justify-between gap-2 border-b" style="border-color: var(--ui-border);">

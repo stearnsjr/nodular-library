@@ -52,7 +52,9 @@ function flyTo(worldX, worldY, targetScale = null, duration = 420) {
 
 function fitToView(animate = true) {
   const rect = canvasWrap.getBoundingClientRect();
-  const padX = 110, padY = 120;
+  const isNarrow = rect.width <= 768;
+  const padX = isNarrow ? 36 : 110;
+  const padY = isNarrow ? 120 : 120;
   const bw = Math.max(480, worldBounds.maxX - worldBounds.minX);
   const bh = Math.max(480, worldBounds.maxY - worldBounds.minY);
   const cx = (worldBounds.minX + worldBounds.maxX) / 2;
@@ -70,15 +72,56 @@ let angleDrag = null;
 let bookDrag = null;
 let paperDrag = null;
 
+// Multi-pointer state for 1-finger pan & 2-finger pinch-to-zoom on touchscreens
+const activePointers = new Map();
+let primaryPointerId = null;
+let primaryPointerType = 'mouse';
+let pinchStart = null;
+
+function beginPinchGesture() {
+  const pts = Array.from(activePointers.values());
+  if (pts.length < 2) return;
+  dragOverlayEl.innerHTML = '';
+  clearCornerDropHighlights();
+  canvasWrap.classList.remove('dragging', 'dragging-angle', 'dragging-book');
+  sceneEl.querySelectorAll('.is-dragging-source').forEach(el => el.classList.remove('is-dragging-source'));
+  angleDrag = null;
+  bookDrag = null;
+  paperDrag = null;
+  const [p1, p2] = pts;
+  const dist = Math.max(10, Math.hypot(p2.x - p1.x, p2.y - p1.y));
+  pinchStart = {
+    dist,
+    midX: (p1.x + p2.x) / 2,
+    midY: (p1.y + p2.y) / 2,
+    camX: cam.x,
+    camY: cam.y,
+    scale: cam.scale
+  };
+  pointerMode = 'pinch';
+  dragMoved = true;
+}
+
 canvasWrap.addEventListener('pointerdown', (e) => {
-  if (e.button !== 0) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
   if (camAnim) { cancelAnimationFrame(camAnim); camAnim = null; }
+
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY, pointerType: e.pointerType || 'mouse' });
+
+  if (activePointers.size === 2) {
+    beginPinchGesture();
+    return;
+  }
+  if (activePointers.size > 2) return;
+
+  primaryPointerId = e.pointerId;
+  primaryPointerType = e.pointerType || 'mouse';
   dragMoved = false;
   dragStart = { x: e.clientX, y: e.clientY, camX: cam.x, camY: cam.y };
 
   const swivel = e.target.closest('[data-action="drag-hall-angle"]');
   if (swivel) {
-    e.preventDefault();
+    if (e.pointerType === 'mouse') e.preventDefault();
     const hallId = swivel.dataset.hallId;
     const hg = layoutCache.hallMap[hallId];
     if (hg) {
@@ -92,7 +135,7 @@ canvasWrap.addEventListener('pointerdown', (e) => {
 
   const spine = e.target.closest('.spine-hit');
   if (spine) {
-    e.preventDefault();
+    if (e.pointerType === 'mouse') e.preventDefault();
     const hallId = spine.dataset.hallId, bookId = spine.dataset.bookId;
     const info = findHallInfo(hallId);
     const book = info?.hall.books.find(b => b.id === bookId);
@@ -103,7 +146,7 @@ canvasWrap.addEventListener('pointerdown', (e) => {
     }
   }
 
-  e.preventDefault();
+  if (e.pointerType === 'mouse') e.preventDefault();
   pointerMode = 'pan';
   canvasWrap.classList.add('dragging');
 });
@@ -317,17 +360,49 @@ function renderCanvasBookDragOverlay(wx, wy) {
 }
 
 window.addEventListener('pointermove', (e) => {
+  if (activePointers.has(e.pointerId)) {
+    activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY, pointerType: e.pointerType || 'mouse' });
+  }
+
+  if (pointerMode === 'pinch') {
+    if (activePointers.size >= 2 && pinchStart) {
+      const [p1, p2] = Array.from(activePointers.values());
+      const curDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      const curMidX = (p1.x + p2.x) / 2;
+      const curMidY = (p1.y + p2.y) / 2;
+      const rect = canvasWrap.getBoundingClientRect();
+      const startRelX = pinchStart.midX - rect.left - rect.width / 2;
+      const startRelY = pinchStart.midY - rect.top - rect.height / 2;
+      const curRelX = curMidX - rect.left - rect.width / 2;
+      const curRelY = curMidY - rect.top - rect.height / 2;
+      const newScale = Math.max(0.22, Math.min(2.2, pinchStart.scale * (curDist / pinchStart.dist)));
+      const ratio = newScale / pinchStart.scale;
+      cam.scale = newScale;
+      cam.x = curRelX - (startRelX - pinchStart.camX) * ratio;
+      cam.y = curRelY - (startRelY - pinchStart.camY) * ratio;
+      applyCamera();
+    }
+    return;
+  }
+
   if (pointerMode === 'idle') return;
+  if (primaryPointerId !== null && e.pointerId !== primaryPointerId) return;
+
   const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+  const isTouch = primaryPointerType === 'touch' || e.pointerType === 'touch';
+  const panThreshold = isTouch ? 12 : 5;
+  const angleThreshold = isTouch ? 8 : 3;
+  const bookThreshold = isTouch ? 18 : 7;
 
   if (pointerMode === 'pan') {
-    if (Math.hypot(dx, dy) > 5) dragMoved = true;
+    if (Math.hypot(dx, dy) > panThreshold) dragMoved = true;
     if (dragMoved) { cam.x = dragStart.camX + dx; cam.y = dragStart.camY + dy; applyCamera(); }
     return;
   }
 
   if (pointerMode === 'drag-angle' && angleDrag) {
-    if (Math.hypot(dx, dy) > 3) dragMoved = true;
+    if (Math.hypot(dx, dy) > angleThreshold) dragMoved = true;
+    if (!dragMoved) return;
     const pt = screenToWorld(e.clientX, e.clientY);
     const absAngle = Math.atan2(pt.y - angleDrag.originY, pt.x - angleDrag.originX);
     const info = findHallInfo(angleDrag.hallId);
@@ -353,7 +428,7 @@ window.addEventListener('pointermove', (e) => {
   }
 
   if (pointerMode === 'maybe-drag-book' && bookDrag) {
-    if (Math.hypot(dx, dy) > 7) {
+    if (Math.hypot(dx, dy) > bookThreshold) {
       pointerMode = 'drag-book';
       dragMoved = true;
       canvasWrap.classList.add('dragging-book');
@@ -369,7 +444,7 @@ window.addEventListener('pointermove', (e) => {
   }
 
   if (pointerMode === 'maybe-drag-paper' && paperDrag) {
-    if (Math.hypot(dx, dy) > 7) {
+    if (Math.hypot(dx, dy) > bookThreshold) {
       pointerMode = 'drag-paper';
       dragMoved = true;
       canvasWrap.classList.add('dragging-book');
@@ -383,19 +458,45 @@ window.addEventListener('pointermove', (e) => {
   }
 });
 
-window.addEventListener('pointerup', () => {
+window.addEventListener('pointerup', (e) => {
+  activePointers.delete(e.pointerId);
+
+  if (pointerMode === 'pinch') {
+    if (activePointers.size === 1) {
+      const [remId, remPt] = Array.from(activePointers.entries())[0];
+      primaryPointerId = remId;
+      primaryPointerType = remPt.pointerType || 'touch';
+      dragStart = { x: remPt.x, y: remPt.y, camX: cam.x, camY: cam.y };
+      pinchStart = null;
+      pointerMode = 'pan';
+      dragMoved = true;
+      canvasWrap.classList.add('dragging');
+    } else if (activePointers.size === 0) {
+      pinchStart = null;
+      primaryPointerId = null;
+      pointerMode = 'idle';
+      canvasWrap.classList.remove('dragging');
+      suppressNextClick = true;
+      setTimeout(() => { suppressNextClick = false; }, 80);
+    }
+    return;
+  }
+
   if (pointerMode === 'idle') return;
+  if (primaryPointerId !== null && e.pointerId !== primaryPointerId) return;
+  primaryPointerId = null;
+
   if (pointerMode === 'drag-angle' && angleDrag) {
     dragOverlayEl.innerHTML = '';
     canvasWrap.classList.remove('dragging-angle');
-    if (dragMoved) { suppressNextClick = true; setTimeout(() => { suppressNextClick = false; }, 0); commitChange(); }
+    if (dragMoved) { suppressNextClick = true; setTimeout(() => { suppressNextClick = false; }, 60); commitChange(); }
     angleDrag = null; pointerMode = 'idle'; return;
   }
   if (pointerMode === 'drag-paper' && paperDrag) {
     dragOverlayEl.innerHTML = '';
     clearCornerDropHighlights();
     canvasWrap.classList.remove('dragging-book');
-    suppressNextClick = true; setTimeout(() => { suppressNextClick = false; }, 0);
+    suppressNextClick = true; setTimeout(() => { suppressNextClick = false; }, 60);
     const { cartPageId, dropTarget } = paperDrag;
     if (dropTarget?.kind === 'recycle-bin') {
       recycleCartPage(cartPageId);
@@ -413,7 +514,7 @@ window.addEventListener('pointerup', () => {
     dragOverlayEl.innerHTML = '';
     clearCornerDropHighlights();
     canvasWrap.classList.remove('dragging-book');
-    suppressNextClick = true; setTimeout(() => { suppressNextClick = false; }, 0);
+    suppressNextClick = true; setTimeout(() => { suppressNextClick = false; }, 60);
     const { sourceHallId, bookId, dropTarget } = bookDrag;
     if (dropTarget?.kind === 'recycle-bin') {
       recycleBook(sourceHallId, bookId);
@@ -443,12 +544,14 @@ window.addEventListener('pointerup', () => {
   if (pointerMode === 'maybe-drag-book') { bookDrag = null; pointerMode = 'idle'; return; }
   if (pointerMode === 'pan') {
     canvasWrap.classList.remove('dragging');
-    if (dragMoved) { suppressNextClick = true; setTimeout(() => { suppressNextClick = false; }, 0); }
+    if (dragMoved) { suppressNextClick = true; setTimeout(() => { suppressNextClick = false; }, 60); }
     pointerMode = 'idle';
   }
 });
 
-window.addEventListener('pointercancel', () => {
+window.addEventListener('pointercancel', (e) => {
+  activePointers.delete(e.pointerId);
+  if (pointerMode === 'pinch' && activePointers.size >= 2) return;
   if (pointerMode === 'idle') return;
   dragOverlayEl.innerHTML = '';
   clearCornerDropHighlights();
@@ -456,6 +559,8 @@ window.addEventListener('pointercancel', () => {
   angleDrag = null;
   bookDrag = null;
   paperDrag = null;
+  pinchStart = null;
+  primaryPointerId = null;
   pointerMode = 'idle';
 });
 

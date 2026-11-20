@@ -1,0 +1,19 @@
+{
+  "name": "The Storyteller's Library — Illustrated Mind Map",
+  "short_name": "Storyteller's Library",
+  "description": "2D illustrated Library Mind Map, Notebook, and D&D (5e / 2024) Character Book",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ede3ce",
+  "theme_color": "#c96843",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

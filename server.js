@@ -158,8 +158,11 @@ function serveStatic(req, res, pathname) {
     return;
   }
   const ext = path.extname(resolved).toLowerCase();
+  const contentType = relPath === '/manifest.json'
+    ? 'application/manifest+json; charset=utf-8'
+    : (MIME_TYPES[ext] || 'application/octet-stream');
   res.writeHead(200, {
-    'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
+    'Content-Type': contentType,
     'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=300'
   });
   fs.createReadStream(resolved).pipe(res);

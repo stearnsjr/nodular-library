@@ -274,7 +274,12 @@ const pageImagePicker = document.getElementById('page-image-picker');
 
 let listDrag = null;
 let openBookViewMode = 'spread'; // 'spread' | 'single' | 'corkboard'
+let mobileTocOpen = false;
 let refPeekState = { open: false, bookId: null, pageId: null };
+
+function isMobileViewport() {
+  return window.innerWidth <= 768;
+}
 
 function clearDropMarkers(root = document) {
   root.querySelectorAll('.drop-before, .drop-after, .drop-into, .dragging-item').forEach(el => {
@@ -289,6 +294,7 @@ function openBookCenter(hallId, bookId, pageId = null, forceViewMode = null) {
 
   selection = { type: null, hallId: null };
   closeInspector();
+  mobileTocOpen = false;
 
   const ordered = getOrderedBookPages(book);
   let chosenPage = pageId ? book.pages.find(p => p.id === pageId) : null;
@@ -305,6 +311,8 @@ function openBookCenter(hallId, bookId, pageId = null, forceViewMode = null) {
     openBookViewMode = 'single';
   } else if (forceViewMode) {
     openBookViewMode = forceViewMode;
+  } else if (isMobileViewport()) {
+    openBookViewMode = 'single';
   } else if (wasScrollOrLoose) {
     openBookViewMode = 'spread';
   }
@@ -355,6 +363,7 @@ function closeOpenBook() {
   if (!openBookState.bookId) return;
   clearEditorSearchHighlights();
   editingChapterId = null;
+  mobileTocOpen = false;
   openBookState = { hallId: null, bookId: null, chapterId: null, pageId: null };
   bookModal.classList.add('book-closed');
   renderMap();
@@ -366,6 +375,7 @@ function selectBookPage(pageId, animateTurn = true) {
   const book = container?.book;
   const page = book?.pages.find(p => p.id === pageId);
   if (!page) return;
+  mobileTocOpen = false;
   openBookState.pageId = page.id;
   openBookState.chapterId = page.chapterId;
   if (animateTurn) playCozySound('page');
@@ -377,6 +387,7 @@ function selectChapterTab(chapterId) {
   const container = findOpenBookContainer(openBookState.hallId, openBookState.bookId);
   const book = container?.book;
   if (!book) return;
+  mobileTocOpen = false;
   openBookState.chapterId = chapterId;
   const firstInChapter = book.pages.find(p => p.chapterId === chapterId);
   openBookState.pageId = firstInChapter ? firstInChapter.id : null;
@@ -697,6 +708,7 @@ function renderDndSheetRightPage(book, hall, activePage, orderedPages, activeIdx
         </div>
       </div>
       <div class="flex items-center gap-1 flex-wrap">
+        ${openBookViewMode === 'single' ? `<button id="btn-mobile-toc" type="button" title="Open Table of Contents &amp; Chapters" class="px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer" style="background:${mobileTocOpen ? chColor.fill : '#fffaf0'}; color:${mobileTocOpen ? '#fffaf2' : '#4a301e'}; border:1px solid #8a6544;">&#9776; Chapters</button>` : ''}
         <button id="dnd-short-rest" type="button" title="Short Rest: spend 1 Hit Die + CON mod to heal" class="px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer" style="background:#fffaf0; color:#4a301e; border:1px solid #8a6544;">&#9749; Short Rest</button>
         <button id="dnd-long-rest" type="button" title="Long Rest: restore full HP, half Hit Dice, Death Saves &amp; all Spell Slots" class="px-2 py-0.5 rounded-lg text-[10px] font-bold cursor-pointer" style="background:#f5c663; color:#352012; border:1px solid #8a6544;">&#9790; Long Rest</button>
         <button id="btn-toggle-ref-peek" type="button" class="text-[10px] font-bold px-2 py-0.5 rounded-lg cursor-pointer" style="background:${refPeekState.open ? '#f5c663' : 'rgba(130,96,62,0.1)'}; color:#362215; border:1px solid rgba(130,96,62,0.28);">&#128065; Peek</button>
@@ -721,47 +733,47 @@ function renderDndSheetRightPage(book, hall, activePage, orderedPages, activeIdx
       <!-- CHARACTER HEADER BANNER -->
       <div class="dnd-box p-2.5 mb-2.5 space-y-2">
         <div class="grid grid-cols-12 gap-2 items-end">
-          <div class="col-span-6 sm:col-span-5">
+          <div class="col-span-12 sm:col-span-5">
             <div class="dnd-label">Character Name</div>
             <input data-dnd-field="name" type="text" value="${esc(ch.name)}" placeholder="Character Name…" class="dnd-input font-storybook font-bold text-base py-0.5" />
           </div>
-          <div class="col-span-4 sm:col-span-3">
+          <div class="col-span-8 sm:col-span-3">
             <div class="dnd-label">Class</div>
             <input data-dnd-field="className" type="text" value="${esc(ch.className)}" placeholder="e.g. Wizard" class="dnd-input text-xs font-semibold py-0.5" />
           </div>
-          <div class="col-span-2 sm:col-span-1">
+          <div class="col-span-4 sm:col-span-1">
             <div class="dnd-label">Lvl</div>
             <input data-dnd-num="level" type="number" min="1" max="20" value="${ch.level}" class="dnd-input text-xs font-bold text-center py-0.5" />
           </div>
-          <div class="col-span-6 sm:col-span-3">
+          <div class="col-span-12 sm:col-span-3">
             <div class="dnd-label">${is2024 ? 'Species' : 'Race'}</div>
             <input data-dnd-field="species" type="text" value="${esc(ch.species)}" placeholder="${is2024 ? 'e.g. Elf, Halfling' : 'e.g. High Elf'}" class="dnd-input text-xs py-0.5" />
           </div>
         </div>
-        <div class="grid grid-cols-12 gap-2 items-end">
+        <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
           ${is2024 ? `
-            <div class="col-span-4">
+            <div class="sm:col-span-4">
               <div class="dnd-label">Subclass</div>
               <input data-dnd-field="subclass" type="text" value="${esc(ch.subclass)}" placeholder="e.g. Evoker" class="dnd-input text-xs py-0.5" />
             </div>
-            <div class="col-span-4">
+            <div class="sm:col-span-4">
               <div class="dnd-label">Background</div>
               <input data-dnd-field="background" type="text" value="${esc(ch.background)}" placeholder="e.g. Sage" class="dnd-input text-xs py-0.5" />
             </div>
-            <div class="col-span-4">
+            <div class="sm:col-span-4">
               <div class="dnd-label">Origin Feat</div>
               <input data-dnd-field="originFeat" type="text" value="${esc(ch.originFeat)}" placeholder="e.g. Alert, Magic Initiate" class="dnd-input text-xs py-0.5" />
             </div>
           ` : `
-            <div class="col-span-4">
+            <div class="sm:col-span-4">
               <div class="dnd-label">Background</div>
               <input data-dnd-field="background" type="text" value="${esc(ch.background)}" placeholder="e.g. Sage" class="dnd-input text-xs py-0.5" />
             </div>
-            <div class="col-span-4">
+            <div class="sm:col-span-4">
               <div class="dnd-label">Alignment</div>
               <input data-dnd-field="alignment" type="text" value="${esc(ch.alignment)}" placeholder="e.g. Neutral Good" class="dnd-input text-xs py-0.5" />
             </div>
-            <div class="col-span-4">
+            <div class="sm:col-span-4">
               <div class="dnd-label">Experience Points</div>
               <input data-dnd-num="xp" type="number" min="0" value="${ch.xp}" class="dnd-input text-xs py-0.5" />
             </div>
@@ -770,9 +782,9 @@ function renderDndSheetRightPage(book, hall, activePage, orderedPages, activeIdx
       </div>
 
       <!-- 2-COLUMN CORE SHEET -->
-      <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5">
         <!-- LEFT COLUMN: ABILITIES + SAVES + SKILLS -->
-        <div class="sm:col-span-5 space-y-2">
+        <div class="md:col-span-5 space-y-2">
           <!-- 6 Ability Scores -->
           <div class="grid grid-cols-3 gap-1.5">
             ${DND_ABILITIES.map(ab => {
@@ -858,7 +870,7 @@ function renderDndSheetRightPage(book, hall, activePage, orderedPages, activeIdx
         </div>
 
         <!-- RIGHT COLUMN: COMBAT, HP, ATTACKS, FEATURES -->
-        <div class="sm:col-span-7 space-y-2">
+        <div class="md:col-span-7 space-y-2">
           <!-- AC, Initiative, Speed -->
           <div class="grid grid-cols-3 gap-1.5">
             <div class="dnd-box p-2 text-center">
@@ -895,15 +907,15 @@ function renderDndSheetRightPage(book, hall, activePage, orderedPages, activeIdx
                 <input data-dnd-num="hpTemp" type="number" min="0" value="${ch.hpTemp}" class="dnd-input font-storybook font-bold text-base text-center" style="color:#3e698a;" />
               </div>
             </div>
-            <div class="flex items-center justify-center gap-1.5">
+            <div class="flex items-center justify-center gap-1.5 flex-wrap">
               ${[-5, -1, 1, 5].map(delta => `
-                <button type="button" data-dnd-hp-delta="${delta}" class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold cursor-pointer"
+                <button type="button" data-dnd-hp-delta="${delta}" class="dnd-hp-btn px-2 py-0.5 rounded-lg text-[10px] font-extrabold cursor-pointer"
                         style="background:${delta < 0 ? 'rgba(185,66,46,0.12)' : 'rgba(67,128,74,0.14)'}; color:${delta < 0 ? '#8f2e1e' : '#2d5c32'}; border:1px solid ${delta < 0 ? 'rgba(185,66,46,0.35)' : 'rgba(67,128,74,0.35)'};">
                   ${delta > 0 ? `+${delta}` : delta} HP
                 </button>
               `).join('')}
             </div>
-            <div class="grid grid-cols-2 gap-2 pt-1.5 border-t" style="border-color:rgba(125,87,54,0.2);">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1.5 border-t" style="border-color:rgba(125,87,54,0.2);">
               <div>
                 <div class="dnd-label mb-0.5">Hit Dice</div>
                 <div class="flex items-center gap-1 text-xs">
@@ -920,19 +932,19 @@ function renderDndSheetRightPage(book, hall, activePage, orderedPages, activeIdx
                 <div class="space-y-1 text-[10px]">
                   <div class="flex items-center gap-1">
                     <span class="w-10 font-bold" style="color:#2f5e36;">Pass</span>
-                    ${[1, 2, 3].map(n => `<button type="button" data-dnd-ds="deathSuccess:${n}" class="dnd-prof-pip ${ch.deathSuccess >= n ? 'is-prof' : ''}" style="${ch.deathSuccess >= n ? 'background:#3e7a46; border-color:#244c2a;' : ''}"></button>`).join('')}
+                    ${[1, 2, 3].map(n => `<button type="button" data-dnd-ds="deathSuccess:${n}" class="dnd-prof-pip ${ch.deathSuccess >= n ? 'is-prof is-ds-pass' : ''}"></button>`).join('')}
                   </div>
                   <div class="flex items-center gap-1">
                     <span class="w-10 font-bold" style="color:#9e3324;">Fail</span>
-                    ${[1, 2, 3].map(n => `<button type="button" data-dnd-ds="deathFail:${n}" class="dnd-prof-pip ${ch.deathFail >= n ? 'is-prof' : ''}" style="${ch.deathFail >= n ? 'background:#a83324; border-color:#5e1a12;' : ''}"></button>`).join('')}
+                    ${[1, 2, 3].map(n => `<button type="button" data-dnd-ds="deathFail:${n}" class="dnd-prof-pip ${ch.deathFail >= n ? 'is-prof is-ds-fail' : ''}"></button>`).join('')}
                   </div>
                 </div>
               </div>
             </div>
             ${is2024 ? `
-              <div class="flex items-center justify-between pt-1.5 border-t text-[10.5px]" style="border-color:rgba(125,87,54,0.2);">
+              <div class="flex items-center justify-between gap-2 flex-wrap pt-1.5 border-t text-[10.5px]" style="border-color:rgba(125,87,54,0.2);">
                 <span class="dnd-label">2024 Exhaustion (${ch.exhaustion ? `-${ch.exhaustion * 2} d20` : 'None'})</span>
-                <div class="flex items-center gap-1">
+                <div class="flex items-center gap-1 flex-wrap">
                   ${[1, 2, 3, 4, 5, 6].map(n => `<button type="button" data-dnd-exh="${n}" class="dnd-slot-pip ${ch.exhaustion >= n ? 'is-used' : ''}" title="Exhaustion level ${n}"></button>`).join('')}
                 </div>
               </div>
@@ -945,10 +957,10 @@ function renderDndSheetRightPage(book, hall, activePage, orderedPages, activeIdx
               <span class="dnd-label">Attacks &amp; Spellcasting</span>
               <button id="dnd-add-atk" type="button" class="px-1.5 py-0.2 rounded text-[10px] font-bold cursor-pointer" style="background:${chColor.soft}; color:${chColor.deep}; border:1px solid ${chColor.fill};">+ Attack</button>
             </div>
-            <div class="space-y-1">
+            <div class="space-y-1.5">
               ${(ch.attacks || []).map((atk, idx) => `
-                <div class="flex items-center gap-1 text-[11px]">
-                  <input data-dnd-atk="name:${idx}" type="text" value="${esc(atk.name)}" placeholder="Weapon / Cantrip" class="dnd-input flex-1 min-w-[72px] font-semibold text-[11px]" />
+                <div class="dnd-atk-row flex flex-wrap items-center gap-1 text-[11px]">
+                  <input data-dnd-atk="name:${idx}" type="text" value="${esc(atk.name)}" placeholder="Weapon / Cantrip" class="dnd-input flex-1 min-w-[90px] font-semibold text-[11px]" />
                   <input data-dnd-atk="bonus:${idx}" type="text" value="${esc(atk.bonus)}" placeholder="+5" title="Attack bonus" class="dnd-input w-10 text-center font-mono font-bold text-[11px]" />
                   <button type="button" data-dnd-roll-atk="${idx}" title="Roll attack (1d20 ${esc(atk.bonus)})" class="dnd-roll-btn px-1 py-0.2 rounded text-[10px] font-bold border" style="background:#fffaf0; border-color:#8a6544; color:#3c2516;">&#127922;</button>
                   <input data-dnd-atk="damage:${idx}" type="text" value="${esc(atk.damage)}" placeholder="1d8+3 slash" class="dnd-input w-24 text-[10.5px]" />
@@ -968,7 +980,7 @@ function renderDndSheetRightPage(book, hall, activePage, orderedPages, activeIdx
           </div>
 
           ${!is2024 ? `
-            <div class="dnd-box p-2 grid grid-cols-2 gap-1.5">
+            <div class="dnd-box p-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               <div>
                 <div class="dnd-label">Personality Traits</div>
                 <textarea data-dnd-field="traits" rows="2" class="w-full rounded p-1 text-[11px] outline-none" style="background:rgba(255,253,247,0.75); border:1px solid rgba(125,87,54,0.22);">${esc(ch.traits)}</textarea>
@@ -992,9 +1004,9 @@ function renderDndSheetRightPage(book, hall, activePage, orderedPages, activeIdx
     `;
   } else if (activePage.sheetType === 'dnd-bio') {
     sheetBodyHtml = `
-      <div class="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5">
         <!-- Portrait & Appearance -->
-        <div class="sm:col-span-5 space-y-2">
+        <div class="md:col-span-5 space-y-2">
           <div class="dnd-box p-2.5 text-center space-y-1.5">
             <div class="dnd-label">Character Portrait</div>
             ${ch.portrait
@@ -1021,10 +1033,10 @@ function renderDndSheetRightPage(book, hall, activePage, orderedPages, activeIdx
         </div>
 
         <!-- Currency, Attunement, Equipment & Backstory -->
-        <div class="sm:col-span-7 space-y-2">
+        <div class="md:col-span-7 space-y-2">
           <div class="dnd-box p-2.5">
             <div class="dnd-label mb-1.5">Coin Purse</div>
-            <div class="grid grid-cols-5 gap-1.5 text-center">
+            <div class="grid grid-cols-3 sm:grid-cols-5 gap-1.5 text-center">
               ${[['cp', 'CP', '#b8734b'], ['sp', 'SP', '#9aa3ab'], ['ep', 'EP', '#8ca4b0'], ['gp', 'GP', '#d49d35'], ['pp', 'PP', '#b6c4d1']].map(([k, lbl, col]) => `
                 <div class="rounded-lg p-1" style="background:rgba(255,250,240,0.9); border:1.5px solid ${col};">
                   <div class="text-[9px] font-extrabold" style="color:#5a3b22;">${lbl}</div>
@@ -1067,22 +1079,22 @@ function renderDndSheetRightPage(book, hall, activePage, orderedPages, activeIdx
   } else if (activePage.sheetType === 'dnd-spells') {
     sheetBodyHtml = `
       <!-- SPELLCASTING HEADER -->
-      <div class="dnd-box p-2.5 mb-2.5 grid grid-cols-12 gap-2 items-end">
-        <div class="col-span-5 sm:col-span-4">
+      <div class="dnd-box p-2.5 mb-2.5 grid grid-cols-2 sm:grid-cols-12 gap-2 items-end">
+        <div class="col-span-2 sm:col-span-4">
           <div class="dnd-label">Spellcasting Class</div>
           <input data-dnd-field="spellClass" type="text" value="${esc(ch.spellClass || ch.className)}" placeholder="e.g. Wizard, Cleric" class="dnd-input font-storybook font-bold text-sm py-0.5" />
         </div>
-        <div class="col-span-3 sm:col-span-3">
+        <div class="col-span-2 sm:col-span-3">
           <div class="dnd-label">Ability</div>
           <select data-dnd-field="spellAbility" class="dnd-input text-xs font-bold py-0.5 cursor-pointer">
             ${[['int', 'INT'], ['wis', 'WIS'], ['cha', 'CHA']].map(([k, lbl]) => `<option value="${k}" ${ch.spellAbility === k ? 'selected' : ''}>${lbl} (${fmtSigned(getAbMod(k))})</option>`).join('')}
           </select>
         </div>
-        <div class="col-span-2 sm:col-span-2 text-center">
+        <div class="col-span-1 sm:col-span-2 text-center">
           <div class="dnd-label">Save DC</div>
           <div class="font-storybook font-extrabold text-base" style="color:#2d1a0f;">${spellDC}</div>
         </div>
-        <div class="col-span-2 sm:col-span-3 text-center">
+        <div class="col-span-1 sm:col-span-3 text-center">
           <div class="dnd-label">Spell Atk</div>
           <button type="button" data-dnd-roll-label="Spell Attack" data-dnd-roll-mod="${spellAtk}"
                   title="Roll Spell Attack (1d20 ${fmtSigned(spellAtk)})"
@@ -1093,7 +1105,7 @@ function renderDndSheetRightPage(book, hall, activePage, orderedPages, activeIdx
       </div>
 
       <!-- CANTRIPS & SPELL LEVELS 1-9 -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
         ${Array.from({ length: 10 }, (_, lv) => {
           const bucket = ch.spells[lv] || { slotsTotal: 0, slotsUsed: 0, list: [] };
           const isCantrip = lv === 0;
@@ -1206,10 +1218,15 @@ function renderDndSheetRightPage(book, hall, activePage, orderedPages, activeIdx
   bookRightEl.querySelectorAll('[data-dnd-jump-page]').forEach(btn => {
     btn.addEventListener('click', () => selectBookPage(btn.dataset.dndJumpPage, true));
   });
+  document.getElementById('btn-mobile-toc')?.addEventListener('click', () => {
+    mobileTocOpen = !mobileTocOpen;
+    renderOpenBook(false);
+  });
   document.getElementById('btn-toggle-ref-peek')?.addEventListener('click', () => {
     if (refPeekState.open) closeReferencePeek(); else openReferencePeek();
   });
   document.getElementById('btn-toggle-single-page')?.addEventListener('click', () => {
+    mobileTocOpen = false;
     openBookViewMode = openBookViewMode === 'single' ? 'spread' : 'single';
     renderOpenBook(false);
   });
@@ -1442,6 +1459,7 @@ function renderOpenBook(animateTurn = false) {
   ribbonTiePopEl.classList.add('hidden');
 
   bookSpreadWrap.classList.toggle('is-single-page-mode', openBookViewMode === 'single');
+  bookSpreadWrap.classList.toggle('mobile-toc-open', mobileTocOpen && openBookViewMode === 'single');
   bookSpreadWrap.classList.toggle('is-scroll-mode', isScroll);
   bookSpreadWrap.classList.toggle('is-corkboard-mode', openBookViewMode === 'corkboard');
   document.getElementById('btn-close-book-label').textContent = isScroll
@@ -1590,6 +1608,12 @@ function renderOpenBook(animateTurn = false) {
 
   // ---- LEFT PAGE: Book Metadata + Study Table Pin + Table of Contents ----
   bookLeftEl.innerHTML = `
+    ${mobileTocOpen && openBookViewMode === 'single' ? `
+      <div class="flex items-center justify-between gap-2 pb-2 mb-2 border-b" style="border-color:rgba(122,92,68,0.28);">
+        <span class="font-storybook font-bold text-sm" style="color:#2d1a0f;">&#128214; Table of Contents &amp; Chapters</span>
+        <button id="btn-close-mobile-toc" type="button" class="rounded-xl px-3 py-1.5 text-xs font-bold cursor-pointer" style="background:${sw.fill}; color:#fffaf2; border:1.5px solid #3c2516;">Back to Page &rarr;</button>
+      </div>
+    ` : ''}
     <div class="flex items-center justify-between gap-1.5 mb-1.5 flex-wrap">
       <span class="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full truncate max-w-[140px]" style="background:${sw.soft}; color:${sw.deep};">
         <span class="w-2 h-2 rounded-full shrink-0" style="background:${sw.fill};"></span>
@@ -1815,15 +1839,15 @@ function renderOpenBook(animateTurn = false) {
       singlePageBannerHtml = `
         <div class="rounded-xl px-2.5 py-1.5 mb-2 flex items-center justify-between gap-2 flex-wrap" style="background:${sw.soft}; border:1.5px solid ${sw.fill};">
           <div class="flex items-center gap-1.5 min-w-0">
-            <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${sw.fill}; border:1px solid #3c2516;"></span>
+            <button id="btn-mobile-toc" type="button" title="Open Table of Contents &amp; Chapters" class="rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer shrink-0" style="background:${mobileTocOpen ? sw.fill : '#fffaf0'}; color:${mobileTocOpen ? '#fffaf2' : '#362215'}; border:1.4px solid ${sw.fill};">&#9776; Chapters</button>
             <span class="font-storybook font-bold text-xs truncate" style="color:${sw.deep};">${esc(book.title)}</span>
           </div>
-          <div class="flex items-center gap-1.5">
+          <div class="flex items-center gap-1.5 flex-wrap">
             <select id="single-page-picker" class="rounded-lg px-2 py-0.5 text-[11px] font-semibold outline-none cursor-pointer" style="background:#fffaf0; border:1px solid ${sw.fill}; color:#362215;">
               ${orderedPages.map((p, idx) => `<option value="${p.id}" ${p.id === activePage.id ? 'selected' : ''}>p.${idx + 1} · ${esc(truncate(p.title, 22))}</option>`).join('')}
             </select>
             <button id="btn-single-to-cork" type="button" title="Corkboard Grid View" class="rounded-lg px-2 py-0.5 text-[10.5px] font-bold cursor-pointer" style="background:#fffaf0; color:#4a301e; border:1px solid rgba(122,92,68,0.35);">&#8862; Grid</button>
-            <button id="btn-single-to-spread" type="button" title="Expand to Two-Page Open Book Spread" class="rounded-lg px-2.5 py-0.5 text-[10.5px] font-bold cursor-pointer" style="background:${sw.fill}; color:#fffaf2; border:1px solid ${sw.deep};">&#128214; 2-Page Spread</button>
+            <button id="btn-single-to-spread" type="button" title="Expand to Two-Page Open Book Spread" class="hidden md:inline-flex rounded-lg px-2.5 py-0.5 text-[10.5px] font-bold cursor-pointer" style="background:${sw.fill}; color:#fffaf2; border:1px solid ${sw.deep};">&#128214; 2-Page Spread</button>
           </div>
         </div>
       `;
@@ -2107,15 +2131,22 @@ function renderOpenBook(animateTurn = false) {
     });
 
     // Wire Single-Page Header Controls
+    document.getElementById('btn-mobile-toc')?.addEventListener('click', () => {
+      mobileTocOpen = !mobileTocOpen;
+      renderOpenBook(false);
+    });
     document.getElementById('btn-toggle-single-page')?.addEventListener('click', () => {
+      mobileTocOpen = false;
       openBookViewMode = openBookViewMode === 'single' ? 'spread' : 'single';
       renderOpenBook(false);
     });
     document.getElementById('btn-single-to-spread')?.addEventListener('click', () => {
+      mobileTocOpen = false;
       openBookViewMode = 'spread';
       renderOpenBook(false);
     });
     document.getElementById('btn-single-to-cork')?.addEventListener('click', () => {
+      mobileTocOpen = false;
       openBookViewMode = 'corkboard';
       renderOpenBook(false);
     });
@@ -2272,7 +2303,12 @@ function renderOpenBook(animateTurn = false) {
   }
 
   // ---- WIRE LEFT PAGE, BOTTOM RIBBONS & DRAGGABLE TOC ----
+  document.getElementById('btn-close-mobile-toc')?.addEventListener('click', () => {
+    mobileTocOpen = false;
+    renderOpenBook(false);
+  });
   document.getElementById('btn-open-corkboard')?.addEventListener('click', () => {
+    mobileTocOpen = false;
     openBookViewMode = 'corkboard';
     renderOpenBook(false);
   });
