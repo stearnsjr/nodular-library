@@ -617,7 +617,7 @@ function renderLibrariesMenu() {
                 <div class="min-w-0">
                   <div class="font-storybook font-bold text-xs truncate" style="color: var(--ui-ink);">${esc(bk.title || 'Untitled Backup')}</div>
                   <div class="text-[10px] truncate" style="color: var(--ui-muted);">
-                    ${esc(formatBackupTime(bk.mtime))} &middot; ${bk.hallCount ?? 0} halls &middot; ${bk.bookCount ?? 0} items
+                    ${esc(formatBackupTime(bk.mtime))} &middot; ${bk.hallCount ?? 0} halls &middot; ${bk.bookCount ?? 0} items${bk.backupCount > 1 ? ` &middot; ${bk.backupCount} backups` : ''}
                   </div>
                 </div>
                 <div class="flex items-center gap-1.5">

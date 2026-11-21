@@ -11,6 +11,7 @@ const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data
 const PUBLIC_DIR = path.resolve(process.env.PUBLIC_DIR || path.join(__dirname, 'public'));
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const LIBRARIES_DIR = path.join(DATA_DIR, 'libraries');
+const META_FILE = path.join(DATA_DIR, 'meta.json');
 const LEGACY_STATE_FILE = path.join(DATA_DIR, 'library.json');
 const MAX_BACKUPS = Math.max(1, parseInt(process.env.MAX_BACKUPS || '20', 10));
 const BACKUP_MIN_INTERVAL_MS = Math.max(0, parseInt(process.env.BACKUP_INTERVAL_SEC || '60', 10) * 1000);
@@ -47,6 +48,32 @@ function getLibraryFile(libId) {
   return path.join(LIBRARIES_DIR, `${sanitizeLibId(libId)}.json`);
 }
 
+function readMeta() {
+  try {
+    if (fs.existsSync(META_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(META_FILE, 'utf8'));
+      if (parsed && typeof parsed === 'object') return parsed;
+    }
+  } catch (err) {}
+  return {};
+}
+
+function writeMeta(patch) {
+  try {
+    const next = { ...readMeta(), ...patch, updatedAt: new Date().toISOString() };
+    const tmp = `${META_FILE}.${process.pid}.${Date.now()}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(next), 'utf8');
+    fs.renameSync(tmp, META_FILE);
+  } catch (err) {
+    console.error('[library] Meta write failed:', err.message);
+  }
+}
+
+function setLastActiveLibraryId(libId) {
+  if (!libId) return;
+  writeMeta({ lastActiveId: sanitizeLibId(libId) });
+}
+
 function countBooksInHalls(halls) {
   let n = 0;
   for (const h of halls || []) {
@@ -58,12 +85,15 @@ function countBooksInHalls(halls) {
 
 function migrateLegacyStateIfNeeded() {
   try {
+    const meta = readMeta();
+    if (meta.legacyMigrated) return;
     const existing = fs.readdirSync(LIBRARIES_DIR).filter((f) => f.endsWith('.json'));
     if (existing.length === 0 && fs.existsSync(LEGACY_STATE_FILE)) {
       const target = getLibraryFile('default');
       fs.copyFileSync(LEGACY_STATE_FILE, target);
       console.log('[library] Migrated legacy library.json -> libraries/default.json');
     }
+    writeMeta({ legacyMigrated: true });
   } catch (err) {
     console.error('[library] Legacy migration check failed:', err.message);
   }
@@ -115,10 +145,13 @@ function listLibraries() {
 function resolveLibraryId(requestedId) {
   migrateLegacyStateIfNeeded();
   if (requestedId) return sanitizeLibId(requestedId);
-  const defaultFile = getLibraryFile('default');
-  if (fs.existsSync(defaultFile)) return 'default';
+  const meta = readMeta();
+  if (meta.lastActiveId && fs.existsSync(getLibraryFile(meta.lastActiveId))) {
+    return sanitizeLibId(meta.lastActiveId);
+  }
   const libs = listLibraries();
-  return libs.length > 0 ? libs[0].id : 'default';
+  if (libs.length > 0) return libs[0].id;
+  return 'default';
 }
 
 function readEnvelope(libId) {
@@ -260,7 +293,8 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/api/libraries' && req.method === 'GET') {
     try {
-      sendJson(res, 200, { libraries: listLibraries() });
+      const libs = listLibraries();
+      sendJson(res, 200, { libraries: libs, lastActiveId: resolveLibraryId('') });
     } catch (err) {
       sendJson(res, 500, { error: err.message || 'Failed to list libraries' });
     }
@@ -287,6 +321,7 @@ const server = http.createServer(async (req, res) => {
         state: nextState
       };
       writeEnvelopeAtomic(libId, updated);
+      setLastActiveLibraryId(libId);
       sendJson(res, 201, {
         ok: true,
         id: libId,
@@ -320,7 +355,11 @@ const server = http.createServer(async (req, res) => {
       const prev = parseEnvelopeFile(filePath);
       maybeWriteRollingBackup(libId, prev, true);
       fs.unlinkSync(filePath);
-      sendJson(res, 200, { ok: true, id: libId, libraries: listLibraries() });
+      const remaining = listLibraries();
+      if (readMeta().lastActiveId === libId) {
+        writeMeta({ lastActiveId: remaining.length > 0 ? remaining[0].id : null });
+      }
+      sendJson(res, 200, { ok: true, id: libId, libraries: remaining, lastActiveId: resolveLibraryId('') });
     } catch (err) {
       sendJson(res, 500, { error: err.message || 'Delete failed' });
     }
@@ -330,6 +369,9 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/state' && req.method === 'GET') {
     const reqId = url.searchParams.get('id') || '';
     const env = readEnvelope(reqId);
+    if (url.searchParams.get('activate') === '1' && env.state) {
+      setLastActiveLibraryId(env.id);
+    }
     sendJson(res, 200, env);
     return;
   }
@@ -363,6 +405,7 @@ const server = http.createServer(async (req, res) => {
         state: nextState
       };
       writeEnvelopeAtomic(libId, updated);
+      setLastActiveLibraryId(libId);
       sendJson(res, 200, { ok: true, id: libId, rev: updated.rev, updatedAt: updated.updatedAt });
     } catch (err) {
       sendJson(res, err.statusCode || 500, { error: err.message || 'Save failed' });
@@ -374,11 +417,14 @@ const server = http.createServer(async (req, res) => {
     return typeof name === 'string' && path.basename(name) === name && name.startsWith('library-') && name.endsWith('.json');
   }
 
+  function extractBackupLibId(name) {
+    const m = name.match(/^library-(.+)-rev(\d+)-/);
+    return m ? sanitizeLibId(m[1]) : 'default';
+  }
+
   function listBackups() {
-    return fs.readdirSync(BACKUP_DIR)
+    const allEntries = fs.readdirSync(BACKUP_DIR)
       .filter((f) => isValidBackupName(f))
-      .sort()
-      .reverse()
       .map((name) => {
         const full = path.join(BACKUP_DIR, name);
         const st = fs.statSync(full);
@@ -388,13 +434,27 @@ const server = http.createServer(async (req, res) => {
           name,
           size: st.size,
           mtime: st.mtime.toISOString(),
-          libId: m ? m[1] : 'default',
+          mtimeMs: st.mtimeMs,
+          libId: extractBackupLibId(name),
           rev: env.rev || (m ? Number(m[2]) : 0),
           title: env.state?.title || 'Untitled Backup',
           hallCount: Array.isArray(env.state?.halls) ? env.state.halls.length : 0,
           bookCount: countBooksInHalls(env.state?.halls)
         };
-      });
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+    // Group by unique library ID, keeping the most recent snapshot per library
+    const byLib = new Map();
+    for (const entry of allEntries) {
+      const existing = byLib.get(entry.libId);
+      if (!existing) {
+        byLib.set(entry.libId, { ...entry, backupCount: 1 });
+      } else {
+        existing.backupCount += 1;
+      }
+    }
+    return Array.from(byLib.values()).map(({ mtimeMs, ...rest }) => rest);
   }
 
   if (pathname === '/api/backups' && req.method === 'GET') {
@@ -423,8 +483,7 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 400, { error: 'Backup file is not a valid library' });
         return;
       }
-      const m = rawName.match(/^library-(.+)-rev\d+-/);
-      const baseSlug = sanitizeLibId((m && m[1]) || env.state.title || 'restored');
+      const baseSlug = extractBackupLibId(rawName) || sanitizeLibId(env.state.title || 'restored');
       let libId = baseSlug;
       let suffix = 2;
       while (fs.existsSync(getLibraryFile(libId))) {
@@ -436,6 +495,7 @@ const server = http.createServer(async (req, res) => {
         state: env.state
       };
       writeEnvelopeAtomic(libId, restored);
+      setLastActiveLibraryId(libId);
       sendJson(res, 201, {
         ok: true,
         id: libId,
@@ -451,6 +511,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (pathname.startsWith('/api/backups/library/') && req.method === 'DELETE') {
+    try {
+      const rawLibId = decodeURIComponent(pathname.slice('/api/backups/library/'.length));
+      const targetLibId = sanitizeLibId(rawLibId);
+      const files = fs.readdirSync(BACKUP_DIR).filter((f) => isValidBackupName(f) && extractBackupLibId(f) === targetLibId);
+      let deletedCount = 0;
+      for (const f of files) {
+        try { fs.unlinkSync(path.join(BACKUP_DIR, f)); deletedCount++; } catch (e) {}
+      }
+      sendJson(res, 200, { ok: true, libId: targetLibId, deletedCount, backups: listBackups() });
+    } catch (err) {
+      sendJson(res, 500, { error: err.message || 'Permanent delete failed' });
+    }
+    return;
+  }
+
   if (pathname.startsWith('/api/backups/') && req.method === 'DELETE') {
     try {
       const rawName = decodeURIComponent(pathname.slice('/api/backups/'.length));
@@ -458,13 +534,13 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 400, { error: 'Invalid backup name' });
         return;
       }
-      const backupPath = path.join(BACKUP_DIR, rawName);
-      if (!fs.existsSync(backupPath)) {
-        sendJson(res, 404, { error: 'Backup not found' });
-        return;
+      const targetLibId = extractBackupLibId(rawName);
+      const files = fs.readdirSync(BACKUP_DIR).filter((f) => isValidBackupName(f) && extractBackupLibId(f) === targetLibId);
+      let deletedCount = 0;
+      for (const f of files) {
+        try { fs.unlinkSync(path.join(BACKUP_DIR, f)); deletedCount++; } catch (e) {}
       }
-      fs.unlinkSync(backupPath);
-      sendJson(res, 200, { ok: true, name: rawName, backups: listBackups() });
+      sendJson(res, 200, { ok: true, name: rawName, libId: targetLibId, deletedCount, backups: listBackups() });
     } catch (err) {
       sendJson(res, 500, { error: err.message || 'Permanent delete failed' });
     }

@@ -1454,7 +1454,7 @@ async function switchToLibrary(libId) {
     await flushServerSave(false);
   }
   try {
-    const resp = await fetch(`/api/state?id=${encodeURIComponent(libId)}`, { cache: 'no-store' });
+    const resp = await fetch(`/api/state?id=${encodeURIComponent(libId)}&activate=1`, { cache: 'no-store' });
     if (!resp.ok) {
       showToast('Could not open that library');
       return;
@@ -1624,9 +1624,13 @@ async function restoreLibraryFromBackup(backupName) {
 async function permanentlyDeleteBackup(backupName) {
   const target = savedBackups.find(b => b.name === backupName);
   const label = target ? target.title : backupName;
-  if (!confirm(`Permanently delete backup "${label}"?\n\nThis cannot be undone.`)) return;
+  const countNote = target && target.backupCount > 1 ? `all ${target.backupCount} backups of ` : 'all backups of ';
+  if (!confirm(`Permanently delete ${countNote}"${label}"?\n\nThis cannot be undone.`)) return;
   try {
-    const resp = await fetch(`/api/backups/${encodeURIComponent(backupName)}`, { method: 'DELETE' });
+    const url = target && target.libId
+      ? `/api/backups/library/${encodeURIComponent(target.libId)}`
+      : `/api/backups/${encodeURIComponent(backupName)}`;
+    const resp = await fetch(url, { method: 'DELETE' });
     if (!resp.ok) {
       showToast('Could not permanently delete backup');
       return;
@@ -1634,7 +1638,7 @@ async function permanentlyDeleteBackup(backupName) {
     const data = await resp.json();
     savedBackups = Array.isArray(data.backups) ? data.backups : savedBackups.filter(b => b.name !== backupName);
     if (typeof renderLibrariesMenu === 'function') renderLibrariesMenu();
-    showToast(`Permanently deleted "${label}"`);
+    showToast(`Permanently deleted backups for "${label}"`);
   } catch (err) {
     showToast('Failed to permanently delete backup');
   }
@@ -1643,12 +1647,25 @@ async function permanentlyDeleteBackup(backupName) {
 async function initServerSync() {
   if (!SERVER_SYNC_SUPPORTED) return;
   try {
-    const libs = await refreshLibraryList();
+    let serverLastActiveId = null;
+    try {
+      const libsResp = await fetch('/api/libraries', { cache: 'no-store' });
+      if (libsResp.ok) {
+        const libsData = await libsResp.json();
+        if (Array.isArray(libsData.libraries)) savedLibraries = libsData.libraries;
+        if (libsData.lastActiveId) serverLastActiveId = libsData.lastActiveId;
+      }
+    } catch (e) {}
+
     let targetId = activeLibraryId;
-    if (libs.length > 0 && !libs.some(l => l.id === targetId)) {
-      targetId = libs[0].id;
+    if (serverLastActiveId && savedLibraries.some(l => l.id === serverLastActiveId)) {
+      targetId = serverLastActiveId;
+      setActiveLibraryId(targetId);
+    } else if (savedLibraries.length > 0 && !savedLibraries.some(l => l.id === targetId)) {
+      targetId = savedLibraries[0].id;
       setActiveLibraryId(targetId);
     }
+
     const resp = await fetch(`/api/state?id=${encodeURIComponent(targetId)}`, { cache: 'no-store' });
     if (!resp.ok) return;
     const data = await resp.json();
@@ -1664,6 +1681,7 @@ async function initServerSync() {
       syncSearchMatches();
       renderAll();
       updateUndoButtons();
+      if (typeof fitToView === 'function') fitToView(false);
       upsertLocalLibraryMeta(activeLibraryId, state, serverRev);
     } else {
       serverRev = 0;
