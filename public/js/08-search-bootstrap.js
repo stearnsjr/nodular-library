@@ -503,8 +503,22 @@ btnTasksMenu?.addEventListener('click', (e) => {
     menuTasks.classList.remove('hidden');
   }
 });
+let showBackupsInMenu = false;
+
+function formatBackupTime(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  } catch (e) { return ''; }
+}
+
 function renderLibrariesMenu() {
   if (!menuTemplates) return;
+  const prevInput = menuTemplates.querySelector('#new-lib-name');
+  const prevDraft = prevInput ? prevInput.value : '';
+  const wasInputFocused = prevInput && document.activeElement === prevInput;
+
   const libs = savedLibraries.length > 0
     ? savedLibraries
     : [{ id: activeLibraryId, title: state.title || 'My Library', hallCount: (state.halls || []).length, bookCount: 0 }];
@@ -540,7 +554,7 @@ function renderLibrariesMenu() {
     <div class="my-2 border-t" style="border-color: var(--ui-border);"></div>
     <div class="px-2 py-1 text-[11px] font-bold uppercase tracking-wider" style="color: var(--ui-muted);">Create New Library</div>
     <div class="px-1.5 pb-1.5 flex items-center gap-1.5">
-      <input id="new-lib-name" type="text" placeholder="New library name…"
+      <input id="new-lib-name" type="text" value="${esc(prevDraft)}" placeholder="New library name…"
              class="storybook-input flex-1 min-w-0 rounded-xl px-2.5 py-1.5 text-xs" />
       <button id="btn-create-blank-lib" type="button"
               class="storybook-btn-primary rounded-xl px-2.5 py-1.5 text-xs font-bold cursor-pointer shrink-0">+ New</button>
@@ -561,6 +575,37 @@ function renderLibrariesMenu() {
         <span class="text-[10.5px]" style="color: var(--ui-muted);">4 Halls &middot; Notes, Sources, Stamps</span>
       </button>
     </div>
+
+    <div class="my-2 border-t" style="border-color: var(--ui-border);"></div>
+    <button id="btn-toggle-backups-menu" type="button"
+            class="w-full px-2 py-1.5 rounded-xl text-left flex items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-wider cursor-pointer bg-transparent border-0 hover:bg-black/5"
+            style="color: var(--ui-muted);">
+      <span>Backups &amp; Deleted (${savedBackups.length})</span>
+      <span>${showBackupsInMenu ? '&#9652;' : '&#9662;'}</span>
+    </button>
+    ${showBackupsInMenu ? `
+      <div class="space-y-1.5 mt-1 max-h-52 overflow-y-auto nice-scroll pr-0.5">
+        ${savedBackups.length === 0
+          ? `<div class="px-2 py-2 text-[11px] italic" style="color: var(--ui-muted);">No server backups yet.</div>`
+          : savedBackups.map(bk => `
+              <div class="rounded-xl p-2 flex flex-col gap-1.5" style="background: var(--ui-surface-alt); border: 1px solid var(--ui-border);">
+                <div class="min-w-0">
+                  <div class="font-storybook font-bold text-xs truncate" style="color: var(--ui-ink);">${esc(bk.title || 'Untitled Backup')}</div>
+                  <div class="text-[10px] truncate" style="color: var(--ui-muted);">
+                    ${esc(formatBackupTime(bk.mtime))} &middot; ${bk.hallCount ?? 0} halls &middot; ${bk.bookCount ?? 0} items
+                  </div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <button type="button" data-restore-backup="${esc(bk.name)}"
+                          class="storybook-btn rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer flex-1">Restore</button>
+                  <button type="button" data-perma-del-backup="${esc(bk.name)}"
+                          class="rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer bg-transparent border border-red-400/50 text-red-600 hover:bg-red-500/10">Perma Delete</button>
+                </div>
+              </div>
+            `).join('')
+        }
+      </div>
+    ` : ''}
   `;
 
   menuTemplates.querySelectorAll('[data-switch-lib]').forEach(btn => {
@@ -582,6 +627,10 @@ function renderLibrariesMenu() {
   });
 
   const nameInput = menuTemplates.querySelector('#new-lib-name');
+  if (wasInputFocused && nameInput) {
+    nameInput.focus();
+    nameInput.setSelectionRange(nameInput.value.length, nameInput.value.length);
+  }
   const submitNewBlank = async () => {
     const title = (nameInput?.value || '').trim() || 'Untitled Library';
     closeAllMenus();
@@ -607,6 +656,29 @@ function renderLibrariesMenu() {
       await createNewLibrary(key, customName);
     });
   });
+
+  menuTemplates.querySelector('#btn-toggle-backups-menu')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    showBackupsInMenu = !showBackupsInMenu;
+    renderLibrariesMenu();
+    if (showBackupsInMenu) refreshBackupList();
+  });
+
+  menuTemplates.querySelectorAll('[data-restore-backup]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const name = btn.dataset.restoreBackup;
+      closeAllMenus();
+      await restoreLibraryFromBackup(name);
+    });
+  });
+
+  menuTemplates.querySelectorAll('[data-perma-del-backup]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await permanentlyDeleteBackup(btn.dataset.permaDelBackup);
+    });
+  });
 }
 
 document.getElementById('btn-templates').addEventListener('click', (e) => {
@@ -617,6 +689,7 @@ document.getElementById('btn-templates').addEventListener('click', (e) => {
     renderLibrariesMenu();
     menuTemplates.classList.remove('hidden');
     refreshLibraryList();
+    refreshBackupList();
   }
 });
 document.getElementById('btn-io').addEventListener('click', (e) => {

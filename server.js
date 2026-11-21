@@ -370,19 +370,103 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  function isValidBackupName(name) {
+    return typeof name === 'string' && path.basename(name) === name && name.startsWith('library-') && name.endsWith('.json');
+  }
+
+  function listBackups() {
+    return fs.readdirSync(BACKUP_DIR)
+      .filter((f) => isValidBackupName(f))
+      .sort()
+      .reverse()
+      .map((name) => {
+        const full = path.join(BACKUP_DIR, name);
+        const st = fs.statSync(full);
+        const env = parseEnvelopeFile(full);
+        const m = name.match(/^library-(.+)-rev(\d+)-/);
+        return {
+          name,
+          size: st.size,
+          mtime: st.mtime.toISOString(),
+          libId: m ? m[1] : 'default',
+          rev: env.rev || (m ? Number(m[2]) : 0),
+          title: env.state?.title || 'Untitled Backup',
+          hallCount: Array.isArray(env.state?.halls) ? env.state.halls.length : 0,
+          bookCount: countBooksInHalls(env.state?.halls)
+        };
+      });
+  }
+
   if (pathname === '/api/backups' && req.method === 'GET') {
     try {
-      const backups = fs.readdirSync(BACKUP_DIR)
-        .filter((f) => f.startsWith('library-') && f.endsWith('.json'))
-        .sort()
-        .reverse()
-        .map((name) => {
-          const st = fs.statSync(path.join(BACKUP_DIR, name));
-          return { name, size: st.size, mtime: st.mtime.toISOString() };
-        });
-      sendJson(res, 200, { backups });
+      sendJson(res, 200, { backups: listBackups() });
     } catch (err) {
       sendJson(res, 500, { error: err.message });
+    }
+    return;
+  }
+
+  if (pathname.startsWith('/api/backups/') && pathname.endsWith('/restore') && req.method === 'POST') {
+    try {
+      const rawName = decodeURIComponent(pathname.slice('/api/backups/'.length, -'/restore'.length));
+      if (!isValidBackupName(rawName)) {
+        sendJson(res, 400, { error: 'Invalid backup name' });
+        return;
+      }
+      const backupPath = path.join(BACKUP_DIR, rawName);
+      if (!fs.existsSync(backupPath)) {
+        sendJson(res, 404, { error: 'Backup not found' });
+        return;
+      }
+      const env = parseEnvelopeFile(backupPath);
+      if (!env.state || typeof env.state.title !== 'string' || !Array.isArray(env.state.halls)) {
+        sendJson(res, 400, { error: 'Backup file is not a valid library' });
+        return;
+      }
+      const m = rawName.match(/^library-(.+)-rev\d+-/);
+      const baseSlug = sanitizeLibId((m && m[1]) || env.state.title || 'restored');
+      let libId = baseSlug;
+      let suffix = 2;
+      while (fs.existsSync(getLibraryFile(libId))) {
+        libId = sanitizeLibId(`${baseSlug}-${suffix++}`);
+      }
+      const restored = {
+        rev: 1,
+        updatedAt: new Date().toISOString(),
+        state: env.state
+      };
+      writeEnvelopeAtomic(libId, restored);
+      sendJson(res, 201, {
+        ok: true,
+        id: libId,
+        rev: restored.rev,
+        updatedAt: restored.updatedAt,
+        state: restored.state,
+        libraries: listLibraries(),
+        backups: listBackups()
+      });
+    } catch (err) {
+      sendJson(res, 500, { error: err.message || 'Restore failed' });
+    }
+    return;
+  }
+
+  if (pathname.startsWith('/api/backups/') && req.method === 'DELETE') {
+    try {
+      const rawName = decodeURIComponent(pathname.slice('/api/backups/'.length));
+      if (!isValidBackupName(rawName)) {
+        sendJson(res, 400, { error: 'Invalid backup name' });
+        return;
+      }
+      const backupPath = path.join(BACKUP_DIR, rawName);
+      if (!fs.existsSync(backupPath)) {
+        sendJson(res, 404, { error: 'Backup not found' });
+        return;
+      }
+      fs.unlinkSync(backupPath);
+      sendJson(res, 200, { ok: true, name: rawName, backups: listBackups() });
+    } catch (err) {
+      sendJson(res, 500, { error: err.message || 'Permanent delete failed' });
     }
     return;
   }

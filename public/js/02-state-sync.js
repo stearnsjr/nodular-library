@@ -1301,6 +1301,7 @@ try {
   activeLibraryId = localStorage.getItem(ACTIVE_LIB_KEY) || 'default';
 } catch (e) {}
 let savedLibraries = [];
+let savedBackups = [];
 
 function getLibStorageKey(id = activeLibraryId) {
   return (!id || id === 'default') ? STORAGE_KEY : `${STORAGE_KEY}:${id}`;
@@ -1548,9 +1549,80 @@ async function deleteSavedLibrary(libId) {
     } else if (typeof renderLibrariesMenu === 'function') {
       renderLibrariesMenu();
     }
+    await refreshBackupList();
     showToast(`Deleted "${label}"`);
   } catch (err) {
     showToast('Failed to delete library');
+  }
+}
+
+async function refreshBackupList() {
+  if (!SERVER_SYNC_SUPPORTED) return savedBackups;
+  try {
+    const resp = await fetch('/api/backups', { cache: 'no-store' });
+    if (!resp.ok) return savedBackups;
+    const data = await resp.json();
+    if (data && Array.isArray(data.backups)) {
+      savedBackups = data.backups;
+      if (typeof renderLibrariesMenu === 'function') renderLibrariesMenu();
+    }
+  } catch (err) {}
+  return savedBackups;
+}
+
+async function restoreLibraryFromBackup(backupName) {
+  if (!backupName) return;
+  if (serverSaveTimer) {
+    clearTimeout(serverSaveTimer);
+    serverSaveTimer = null;
+    await flushServerSave(false);
+  }
+  try {
+    const resp = await fetch(`/api/backups/${encodeURIComponent(backupName)}/restore`, { method: 'POST' });
+    if (!resp.ok) {
+      showToast('Could not restore backup');
+      return;
+    }
+    const data = await resp.json();
+    if (Array.isArray(data.libraries)) savedLibraries = data.libraries;
+    if (Array.isArray(data.backups)) savedBackups = data.backups;
+    setActiveLibraryId(data.id);
+    serverRev = data.rev || 1;
+    state = normalizeLibraryState(data.state);
+    try { localStorage.setItem(getLibStorageKey(activeLibraryId), JSON.stringify(state)); } catch (e) {}
+    activeStampLensId = null;
+    if (typeof clearSearch === 'function') clearSearch(false);
+    if (typeof closeOpenBook === 'function') closeOpenBook();
+    if (typeof clearSelection === 'function') clearSelection();
+    historyStack = [JSON.stringify(state)];
+    historyIndex = 0;
+    syncSearchMatches();
+    renderAll();
+    updateUndoButtons();
+    if (typeof fitToView === 'function') fitToView(true);
+    if (typeof renderLibrariesMenu === 'function') renderLibrariesMenu();
+    showToast(`Restored "${state.title}" from backup`);
+  } catch (err) {
+    showToast('Failed to restore backup');
+  }
+}
+
+async function permanentlyDeleteBackup(backupName) {
+  const target = savedBackups.find(b => b.name === backupName);
+  const label = target ? target.title : backupName;
+  if (!confirm(`Permanently delete backup "${label}"?\n\nThis cannot be undone.`)) return;
+  try {
+    const resp = await fetch(`/api/backups/${encodeURIComponent(backupName)}`, { method: 'DELETE' });
+    if (!resp.ok) {
+      showToast('Could not permanently delete backup');
+      return;
+    }
+    const data = await resp.json();
+    savedBackups = Array.isArray(data.backups) ? data.backups : savedBackups.filter(b => b.name !== backupName);
+    if (typeof renderLibrariesMenu === 'function') renderLibrariesMenu();
+    showToast(`Permanently deleted "${label}"`);
+  } catch (err) {
+    showToast('Failed to permanently delete backup');
   }
 }
 
