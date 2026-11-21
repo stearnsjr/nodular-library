@@ -454,9 +454,17 @@ window.addEventListener('pointermove', (e) => {
   }
 
   if (pointerMode === 'drag-book' && bookDrag) {
-    const pt = screenToWorld(e.clientX, e.clientY);
-    bookDrag.dropTarget = findCanvasBookDropTarget(pt.x, pt.y, e.clientX, e.clientY);
-    renderCanvasBookDragOverlay(pt.x, pt.y);
+    bookDrag.lastClientX = e.clientX;
+    bookDrag.lastClientY = e.clientY;
+    if (!bookDrag.rafId) {
+      bookDrag.rafId = requestAnimationFrame(() => {
+        if (!bookDrag) return;
+        bookDrag.rafId = null;
+        const pt = screenToWorld(bookDrag.lastClientX, bookDrag.lastClientY);
+        bookDrag.dropTarget = findCanvasBookDropTarget(pt.x, pt.y, bookDrag.lastClientX, bookDrag.lastClientY);
+        renderCanvasBookDragOverlay(pt.x, pt.y);
+      });
+    }
     return;
   }
 
@@ -469,9 +477,17 @@ window.addEventListener('pointermove', (e) => {
   }
 
   if (pointerMode === 'drag-paper' && paperDrag) {
-    const pt = screenToWorld(e.clientX, e.clientY);
-    paperDrag.dropTarget = findPaperDropTarget(pt.x, pt.y, e.clientX, e.clientY);
-    renderCanvasPaperDragOverlay(pt.x, pt.y);
+    paperDrag.lastClientX = e.clientX;
+    paperDrag.lastClientY = e.clientY;
+    if (!paperDrag.rafId) {
+      paperDrag.rafId = requestAnimationFrame(() => {
+        if (!paperDrag) return;
+        paperDrag.rafId = null;
+        const pt = screenToWorld(paperDrag.lastClientX, paperDrag.lastClientY);
+        paperDrag.dropTarget = findPaperDropTarget(pt.x, pt.y, paperDrag.lastClientX, paperDrag.lastClientY);
+        renderCanvasPaperDragOverlay(pt.x, pt.y);
+      });
+    }
   }
 });
 

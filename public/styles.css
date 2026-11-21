@@ -267,8 +267,14 @@ body.lib-candlelight {
   pointer-events: none;
 }
 
-#book-modal { transition: opacity 0.22s ease; }
-#book-modal.book-closed,
+#book-modal { transition: opacity 0.22s ease, visibility 0.22s ease; }
+#book-modal.book-closed {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
 #book-modal.book-closed * { opacity: 0; pointer-events: none !important; }
 #book-spread-wrap { transition: transform 0.28s cubic-bezier(0.34, 1.4, 0.64, 1), opacity 0.22s ease; }
 #book-modal.book-closed #book-spread-wrap { transform: scale(0.84) translateY(20px); opacity: 0; }
@@ -1225,10 +1231,34 @@ body.lib-candlelight .oak-tabletop-plank {
     opacity: 1 !important;
   }
 
-  /* Prevent Android Chrome / mobile Skia GPU tile flickering during SVG pan & pinch-zoom */
-  #scene-content [filter="url(#bookShadow)"],
-  #scene-content [filter="url(#shelfShadow)"] {
+  /* Prevent Android Chrome / mobile Skia GPU tile flickering during SVG pan, zoom, and book dragging */
+  .storybook-panel {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: var(--ui-surface-solid);
+  }
+  #world-layer [filter="url(#bookShadow)"],
+  #world-layer [filter="url(#shelfShadow)"] {
     filter: none !important;
+  }
+  .hall-banner-inner,
+  .quick-add-inner,
+  .swivel-inner,
+  .ribbon-tag-inner,
+  .spine-inner,
+  .spine-tooltip,
+  .shelf-slot-add-inner,
+  .rotunda-desk-inner,
+  .study-table-inner,
+  .cart-inner,
+  .fold-btn-inner,
+  .study-book-inner {
+    transition: none !important;
+    transform-box: initial !important;
+  }
+  .mote,
+  .lantern-halo {
+    animation: none !important;
   }
 }
 
