@@ -275,7 +275,7 @@ function findCanvasBookDropTarget(wx, wy, clientX = null, clientY = null) {
             barX = bay.x + last.cx + last.metrics.w / 2 + SPINE_GAP / 2;
           }
         }
-        return { kind: 'bay', hallId: hg.hall.id, hallTitle: hg.hall.title, insertIndex: Math.max(0, bayFirstGlobalIdx + localIdx), bay, barX, barTopY, barBottomY: shelfFloorY };
+        return { kind: 'bay', hallId: hg.hall.id, hallTitle: hg.hall.title, shelfId: bay.shelfId || null, insertIndex: Math.max(0, bayFirstGlobalIdx + localIdx), bay, barX, barTopY, barBottomY: shelfFloorY };
       }
     }
   }
@@ -619,9 +619,9 @@ window.addEventListener('pointerup', (e) => {
       moveBookToCart(sourceHallId, bookId);
     } else if (dropTarget) {
       if (sourceHallId === CART_HALL_ID) {
-        shelveCartBookAt(bookId, dropTarget.hallId, dropTarget.insertIndex);
+        shelveCartBookAt(bookId, dropTarget.hallId, dropTarget.insertIndex, dropTarget.shelfId || null);
       } else {
-        reorderOrMoveBook(sourceHallId, bookId, dropTarget.hallId, dropTarget.insertIndex);
+        reorderOrMoveBook(sourceHallId, bookId, dropTarget.hallId, dropTarget.insertIndex, dropTarget.shelfId || null);
       }
     } else renderMap();
     bookDrag = null; pointerMode = 'idle'; return;
@@ -754,45 +754,72 @@ function measureBookSpine(book) {
   return { lines, numLines, w, h };
 }
 
-function packBooksIntoBays(books) {
-  const measured = books.map(book => ({ book, metrics: measureBookSpine(book) }));
-  const bays = [];
-  let curItems = [], curW = 0;
+function packBooksIntoBays(books, shelves = []) {
+  function buildBayObjects(bayItemGroups, shelfId = null, shelfName = null, bayIdxOffset = 0) {
+    return bayItemGroups.map((items, localIdx) => {
+      const bayIdx = bayIdxOffset + localIdx;
+      const isLastBay = localIdx === bayItemGroups.length - 1;
+      const totalBooksW = items.reduce((sum, it, idx) => sum + it.metrics.w + (idx > 0 ? SPINE_GAP : 0), 0);
+      const maxBookH = items.reduce((m, it) => Math.max(m, it.metrics.h), 88);
+      const ghostW = 22;
+      const bookendSpace = items.length > 0 ? 11 : 0;
+      const innerW = Math.max(170, totalBooksW + (isLastBay ? bookendSpace + ghostW + 14 : 18));
+      const hasInlineAddSlot = isLastBay && (totalBooksW + bookendSpace + ghostW + 12 <= Math.max(MAX_BAY_INNER_W + 14, innerW));
+      const innerH = Math.max(106, maxBookH + 18);
 
-  for (const item of measured) {
-    const needed = curItems.length === 0 ? item.metrics.w : SPINE_GAP + item.metrics.w;
-    if (curItems.length > 0 && (curW + needed > MAX_BAY_INNER_W || curItems.length >= MAX_BOOKS_PER_BAY)) {
-      bays.push(curItems); curItems = [item]; curW = item.metrics.w;
-    } else { curItems.push(item); curW += needed; }
-  }
-  if (curItems.length > 0 || bays.length === 0) bays.push(curItems);
+      let cursorX = -innerW / 2 + 10;
+      const positioned = items.map((it) => {
+        const cx = cursorX + it.metrics.w / 2;
+        cursorX += it.metrics.w + SPINE_GAP;
+        return { ...it, cx };
+      });
 
-  return bays.map((items, bayIdx) => {
-    const isLastBay = bayIdx === bays.length - 1;
-    const totalBooksW = items.reduce((sum, it, idx) => sum + it.metrics.w + (idx > 0 ? SPINE_GAP : 0), 0);
-    const maxBookH = items.reduce((m, it) => Math.max(m, it.metrics.h), 88);
-    const ghostW = 22;
-    const bookendSpace = items.length > 0 ? 11 : 0;
-    const innerW = Math.max(170, totalBooksW + (isLastBay ? bookendSpace + ghostW + 14 : 18));
-    const hasInlineAddSlot = isLastBay && (totalBooksW + bookendSpace + ghostW + 12 <= Math.max(MAX_BAY_INNER_W + 14, innerW));
-    const innerH = Math.max(106, maxBookH + 18);
+      const bookendX = positioned.length > 0 ? (cursorX - SPINE_GAP + 1.5) : null;
+      const addSlotX = hasInlineAddSlot ? (cursorX + (positioned.length > 0 ? 11 : 0) + ghostW / 2) : null;
+      const displayShelfName = shelfName
+        ? (localIdx > 0 ? `${shelfName} (${localIdx + 1})` : shelfName)
+        : null;
 
-    let cursorX = -innerW / 2 + 10;
-    const positioned = items.map((it) => {
-      const cx = cursorX + it.metrics.w / 2;
-      cursorX += it.metrics.w + SPINE_GAP;
-      return { ...it, cx };
+      return {
+        bayIdx, isLastBay, items: positioned,
+        shelfId, shelfName: displayShelfName,
+        innerW, innerH, outerW: innerW + 24, outerH: innerH + 40,
+        bookendX, addSlotX, totalBooksW
+      };
     });
+  }
 
-    const bookendX = positioned.length > 0 ? (cursorX - SPINE_GAP + 1.5) : null;
-    const addSlotX = hasInlineAddSlot ? (cursorX + (positioned.length > 0 ? 11 : 0) + ghostW / 2) : null;
+  function packMeasuredGroup(measured) {
+    const groups = [];
+    let curItems = [], curW = 0;
+    for (const item of measured) {
+      const needed = curItems.length === 0 ? item.metrics.w : SPINE_GAP + item.metrics.w;
+      if (curItems.length > 0 && (curW + needed > MAX_BAY_INNER_W || curItems.length >= MAX_BOOKS_PER_BAY)) {
+        groups.push(curItems); curItems = [item]; curW = item.metrics.w;
+      } else { curItems.push(item); curW += needed; }
+    }
+    if (curItems.length > 0 || groups.length === 0) groups.push(curItems);
+    return groups;
+  }
 
-    return {
-      bayIdx, isLastBay, items: positioned,
-      innerW, innerH, outerW: innerW + 24, outerH: innerH + 40,
-      bookendX, addSlotX, totalBooksW
-    };
-  });
+  if (Array.isArray(shelves) && shelves.length > 0) {
+    const allBays = [];
+    const firstShelfId = shelves[0].id;
+    const validIds = new Set(shelves.map(s => s.id));
+    for (const sh of shelves) {
+      const shBooks = (books || []).filter(b => {
+        const bid = (b.shelfId && validIds.has(b.shelfId)) ? b.shelfId : firstShelfId;
+        return bid === sh.id;
+      });
+      const measured = shBooks.map(book => ({ book, metrics: measureBookSpine(book) }));
+      const groups = packMeasuredGroup(measured);
+      allBays.push(...buildBayObjects(groups, sh.id, sh.name || '', allBays.length));
+    }
+    return allBays;
+  }
+
+  const measured = (books || []).map(book => ({ book, metrics: measureBookSpine(book) }));
+  return buildBayObjects(packMeasuredGroup(measured), null, null, 0);
 }
 
 let layoutCache = { halls: [], hallMap: {}, books: {} };
@@ -811,7 +838,7 @@ function computeLayout() {
 
   function subtreeWeight(hall) {
     if (hall.collapsed) return 0.62;
-    const bays = packBooksIntoBays(hall.books);
+    const bays = packBooksIntoBays(hall.books, hall.shelves);
     let w = 1 + (bays.length - 1) * 0.25;
     for (const sub of hall.subHalls || []) w += 0.42 + subtreeWeight(sub) * 0.28;
     return w;
@@ -866,7 +893,7 @@ function computeLayout() {
       return;
     }
 
-    const packedBays = packBooksIntoBays(hall.books);
+    const packedBays = packBooksIntoBays(hall.books, hall.shelves);
     const bannerDist = depth === 0 ? HUB_RADIUS + 68 : 62;
 
     const bayRadii = [];

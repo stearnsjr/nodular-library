@@ -95,7 +95,21 @@ function normalizeLibraryState(lib) {
     halls.forEach(h => {
       if (!validPalette.has(h.color)) h.color = fallbackColor;
       if (!Array.isArray(h.books)) h.books = [];
-      h.books.forEach(b => normBook(b, h.color, true));
+      if (!Array.isArray(h.shelves)) h.shelves = [];
+      h.shelves = h.shelves
+        .filter(s => s && typeof s === 'object')
+        .map((s, idx) => ({
+          id: s.id || uid('sh'),
+          name: typeof s.name === 'string' ? s.name : `Shelf ${idx + 1}`
+        }));
+      const validShelfIds = new Set(h.shelves.map(s => s.id));
+      const firstShelfId = h.shelves[0]?.id || null;
+      h.books.forEach(b => {
+        normBook(b, h.color, true);
+        if (h.shelves.length > 0) {
+          if (!b.shelfId || !validShelfIds.has(b.shelfId)) b.shelfId = firstShelfId;
+        }
+      });
       if (!Array.isArray(h.subHalls)) h.subHalls = [];
       if (typeof h.customAngle !== 'number' || !Number.isFinite(h.customAngle)) h.customAngle = null;
       h.collapsed = Boolean(h.collapsed);

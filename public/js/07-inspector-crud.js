@@ -62,9 +62,9 @@ svgEl.addEventListener('click', (e) => {
   else if (action === 'open-book') openBookCenter(hallId, bookId);
   else if (action === 'add-hall') createHall(null);
   else if (action === 'add-subhall') createHall(hallId);
-  else if (action === 'add-book') createBook(hallId);
-  else if (action === 'add-scroll') createScroll(hallId);
-  else if (action === 'add-dndchar') createCharacterBook(hallId, '2024');
+  else if (action === 'add-book') createBook(hallId, target.dataset.shelfId || null);
+  else if (action === 'add-scroll') createScroll(hallId, target.dataset.shelfId || null);
+  else if (action === 'add-dndchar') createCharacterBook(hallId, '2024', target.dataset.shelfId || null);
 });
 
 svgEl.addEventListener('dblclick', (e) => {
@@ -330,12 +330,17 @@ function moveBookToCart(fromHallId, bookId) {
   showToast(`Little librarian carried "${book.title}" to the Sorting Pile`);
 }
 
-function shelveCartBookAt(bookId, destHallId, rawInsertIdx = null) {
+function shelveCartBookAt(bookId, destHallId, rawInsertIdx = null, shelfId = null) {
   const idx = (state.cart?.books || []).findIndex(b => b.id === bookId);
   const destInfo = findHallInfo(destHallId);
   if (idx === -1 || !destInfo) return;
   const startScreenPt = captureTabletopItemScreenPoint('pile', bookId);
   const [book] = state.cart.books.splice(idx, 1);
+  if (destInfo.hall.shelves?.length) {
+    book.shelfId = (shelfId && destInfo.hall.shelves.some(s => s.id === shelfId)) ? shelfId : destInfo.hall.shelves[0].id;
+  } else {
+    delete book.shelfId;
+  }
   expandAncestorsOfHall(destHallId, true);
   if (typeof rawInsertIdx === 'number' && Number.isFinite(rawInsertIdx)) {
     const targetIdx = Math.max(0, Math.min(destInfo.hall.books.length, rawInsertIdx));
@@ -632,47 +637,95 @@ function deleteHall(hallId) {
   showToast(info.ancestors.length > 0 ? 'Removed Sub-Hall' : 'Removed Hall');
 }
 
-function createBook(hallId) {
+function createShelf(hallId, rawName = '') {
+  const info = findHallInfo(hallId);
+  if (!info) return;
+  const hall = info.hall;
+  hall.collapsed = false;
+  if (!Array.isArray(hall.shelves)) hall.shelves = [];
+  if (hall.shelves.length === 0 && hall.books.length > 0) {
+    const firstId = uid('sh');
+    hall.shelves.push({ id: firstId, name: 'Shelf 1' });
+    hall.books.forEach(b => { b.shelfId = firstId; });
+  }
+  const cleanName = (rawName || '').trim() || `Shelf ${hall.shelves.length + 1}`;
+  const newShelf = { id: uid('sh'), name: cleanName };
+  hall.shelves.push(newShelf);
+  commitChange();
+  showToast(`Added shelf "${cleanName}" to "${hall.title}"`);
+  return newShelf;
+}
+
+function deleteShelf(hallId, shelfId) {
+  const info = findHallInfo(hallId);
+  if (!info) return;
+  const hall = info.hall;
+  if (!Array.isArray(hall.shelves)) return;
+  const idx = hall.shelves.findIndex(s => s.id === shelfId);
+  if (idx === -1) return;
+  const [removed] = hall.shelves.splice(idx, 1);
+  const fallbackId = hall.shelves[0]?.id || null;
+  hall.books.forEach(b => {
+    if (b.shelfId === shelfId) {
+      if (fallbackId) b.shelfId = fallbackId;
+      else delete b.shelfId;
+    }
+  });
+  commitChange();
+  showToast(`Removed shelf "${removed.name}"${fallbackId ? ' (books moved to ' + hall.shelves[0].name + ')' : ''}`);
+}
+
+function resolveTargetShelfId(hall, requestedShelfId) {
+  if (!Array.isArray(hall.shelves) || hall.shelves.length === 0) return null;
+  if (requestedShelfId && hall.shelves.some(s => s.id === requestedShelfId)) return requestedShelfId;
+  return hall.shelves[hall.shelves.length - 1].id;
+}
+
+function createBook(hallId, shelfId = null) {
   const info = findHallInfo(hallId);
   if (!info) return;
   const hall = info.hall;
   hall.collapsed = false;
   const pal = getPalette();
-  const prevBays = packBooksIntoBays(hall.books).length;
+  const prevBays = packBooksIntoBays(hall.books, hall.shelves).length;
   const baseIdx = Math.max(0, pal.findIndex(s => s.id === hall.color));
   const bookColor = pal[(baseIdx + hall.books.length) % pal.length].id;
   const chId = uid('ch'), firstPageId = uid('p');
+  const targetShelfId = resolveTargetShelfId(hall, shelfId);
   const newBook = {
     id: uid('b'), title: `Book ${hall.books.length + 1}`, color: bookColor, pinned: false, summary: '',
+    ...(targetShelfId ? { shelfId: targetShelfId } : {}),
     chapters: [{ id: chId, title: 'Chapter 1', color: bookColor }],
     pages: [{ id: firstPageId, chapterId: chId, title: 'Page One', stamps: [], body: '', html: '' }]
   };
   hall.books.push(newBook);
-  const nextBays = packBooksIntoBays(hall.books).length;
+  const nextBays = packBooksIntoBays(hall.books, hall.shelves).length;
   commitChange();
   openBookCenter(hall.id, newBook.id, firstPageId);
   setTimeout(() => {
     const inp = document.getElementById('open-book-title');
     if (inp) { inp.focus(); inp.select(); }
   }, 90);
-  showToast(nextBays > prevBays
-    ? `Expanded "${hall.title}" with Bookshelf #${nextBays}!`
-    : `Shelved a new book in "${hall.title}"`
+  const shName = targetShelfId ? hall.shelves.find(s => s.id === targetShelfId)?.name : null;
+  showToast(shName
+    ? `Shelved a new book on "${shName}"`
+    : (nextBays > prevBays ? `Expanded "${hall.title}" with Bookshelf #${nextBays}!` : `Shelved a new book in "${hall.title}"`)
   );
 }
 
-function createScroll(hallId) {
+function createScroll(hallId, shelfId = null) {
   const info = findHallInfo(hallId);
   if (!info) return;
   const hall = info.hall;
   hall.collapsed = false;
   const pal = getPalette();
-  const prevBays = packBooksIntoBays(hall.books).length;
+  const prevBays = packBooksIntoBays(hall.books, hall.shelves).length;
   const baseIdx = Math.max(0, pal.findIndex(s => s.id === hall.color));
   const scrollColor = pal[(baseIdx + hall.books.length) % pal.length].id;
   const scrollNum = hall.books.filter(b => isScrollItem(b)).length + 1;
   const chId = uid('ch'), pageId = uid('p');
   const title = `Scroll ${scrollNum}`;
+  const targetShelfId = resolveTargetShelfId(hall, shelfId);
   const newScroll = {
     id: uid('b'),
     itemType: 'scroll',
@@ -680,20 +733,22 @@ function createScroll(hallId) {
     color: scrollColor,
     pinned: false,
     summary: '',
+    ...(targetShelfId ? { shelfId: targetShelfId } : {}),
     chapters: [{ id: chId, title: 'Scroll', color: scrollColor }],
     pages: [{ id: pageId, chapterId: chId, title, stamps: [], properties: [], body: '', html: '' }]
   };
   hall.books.push(newScroll);
-  const nextBays = packBooksIntoBays(hall.books).length;
+  const nextBays = packBooksIntoBays(hall.books, hall.shelves).length;
   commitChange();
   openBookCenter(hall.id, newScroll.id, pageId, 'single');
   setTimeout(() => {
     const inp = document.getElementById('open-page-title');
     if (inp) { inp.focus(); inp.select(); }
   }, 90);
-  showToast(nextBays > prevBays
-    ? `Expanded "${hall.title}" with Bookshelf #${nextBays} & shelved a new Scroll!`
-    : `Shelved a new parchment Scroll in "${hall.title}"`
+  const shName = targetShelfId ? hall.shelves.find(s => s.id === targetShelfId)?.name : null;
+  showToast(shName
+    ? `Shelved a new Scroll on "${shName}"`
+    : (nextBays > prevBays ? `Expanded "${hall.title}" with Bookshelf #${nextBays} & shelved a new Scroll!` : `Shelved a new parchment Scroll in "${hall.title}"`)
   );
 }
 
@@ -711,13 +766,13 @@ function convertScrollToBook(hallId, bookId) {
   showToast(`Bound "${book.title}" into a multi-page Book!`);
 }
 
-function createCharacterBook(hallId, edition = '2024') {
+function createCharacterBook(hallId, edition = '2024', shelfId = null) {
   const info = findHallInfo(hallId);
   if (!info) return;
   const hall = info.hall;
   hall.collapsed = false;
   const pal = getPalette();
-  const prevBays = packBooksIntoBays(hall.books).length;
+  const prevBays = packBooksIntoBays(hall.books, hall.shelves).length;
   const baseIdx = Math.max(0, pal.findIndex(s => s.id === hall.color));
   const bookColor = pal[(baseIdx + hall.books.length) % pal.length].id;
   const charNum = hall.books.filter(b => isCharacterBook(b)).length + 1;
@@ -728,6 +783,7 @@ function createCharacterBook(hallId, edition = '2024') {
   const pBioId = uid('p');
   const pSpellsId = uid('p');
   const pLogId = uid('p');
+  const targetShelfId = resolveTargetShelfId(hall, shelfId);
   const newBook = {
     id: uid('b'),
     itemType: 'book',
@@ -735,6 +791,7 @@ function createCharacterBook(hallId, edition = '2024') {
     color: bookColor,
     pinned: false,
     summary: 'D&D Player Character Sheet & Campaign Notes',
+    ...(targetShelfId ? { shelfId: targetShelfId } : {}),
     dndChar: createDefaultDndCharData(title, edition),
     chapters: [
       { id: chSheetId, title: 'Character Sheet', color: bookColor },
@@ -748,12 +805,13 @@ function createCharacterBook(hallId, edition = '2024') {
     ]
   };
   hall.books.push(newBook);
-  const nextBays = packBooksIntoBays(hall.books).length;
+  const nextBays = packBooksIntoBays(hall.books, hall.shelves).length;
   commitChange();
   openBookCenter(hall.id, newBook.id, pCoreId, 'spread');
-  showToast(nextBays > prevBays
-    ? `Expanded "${hall.title}" with Bookshelf #${nextBays} & created D&D Character Book!`
-    : `Created D&D Character Book in "${hall.title}"`
+  const shName = targetShelfId ? hall.shelves.find(s => s.id === targetShelfId)?.name : null;
+  showToast(shName
+    ? `Created D&D Character Book on "${shName}"!`
+    : (nextBays > prevBays ? `Expanded "${hall.title}" with Bookshelf #${nextBays} & created D&D Character Book!` : `Created D&D Character Book in "${hall.title}"`)
   );
 }
 
@@ -930,20 +988,29 @@ function emptyRecycleBin() {
   showToast(`Emptied ${n} item${n === 1 ? '' : 's'} from Recycling Basket`);
 }
 
-function reorderOrMoveBook(fromHallId, bookId, toHallId, rawInsertIdx) {
+function reorderOrMoveBook(fromHallId, bookId, toHallId, rawInsertIdx, targetShelfId = null) {
   const fromInfo = findHallInfo(fromHallId);
   const toInfo = findHallInfo(toHallId);
   if (!fromInfo || !toInfo) return;
   const fromIdx = fromInfo.hall.books.findIndex(b => b.id === bookId);
   if (fromIdx === -1) return;
 
+  const movingBook = fromInfo.hall.books[fromIdx];
+  const destShelves = toInfo.hall.shelves || [];
+  const resolvedDestShelfId = destShelves.length > 0
+    ? ((targetShelfId && destShelves.some(s => s.id === targetShelfId)) ? targetShelfId : (fromHallId === toHallId && movingBook.shelfId && destShelves.some(s => s.id === movingBook.shelfId) ? movingBook.shelfId : destShelves[0].id))
+    : null;
+  const shelfChanged = (movingBook.shelfId || null) !== resolvedDestShelfId;
+
   let targetIdx = Math.max(0, Math.min(toInfo.hall.books.length, rawInsertIdx));
   if (fromHallId === toHallId) {
-    if (targetIdx === fromIdx || targetIdx === fromIdx + 1) { renderMap(); return; }
+    if (!shelfChanged && (targetIdx === fromIdx || targetIdx === fromIdx + 1)) { renderMap(); return; }
     if (fromIdx < targetIdx) targetIdx--;
   }
 
   const [book] = fromInfo.hall.books.splice(fromIdx, 1);
+  if (resolvedDestShelfId) book.shelfId = resolvedDestShelfId;
+  else delete book.shelfId;
   toInfo.hall.books.splice(targetIdx, 0, book);
   if (openBookState.bookId === bookId) openBookState.hallId = toInfo.hall.id;
   const movedHall = fromHallId !== toHallId;
@@ -2077,6 +2144,40 @@ function renderInspector() {
 
     <div class="pt-3 border-t space-y-2" style="border-color:var(--ui-border);">
       <div class="flex items-center justify-between gap-1.5 flex-wrap">
+        <span class="text-xs font-semibold" style="color:var(--ui-muted);">Named Shelves (${(hall.shelves || []).length})</span>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <input id="insp-new-shelf-name" type="text" placeholder="e.g. House Stark, Villains…"
+               class="storybook-input flex-1 min-w-0 rounded-xl px-2.5 py-1.5 text-xs" />
+        <button id="insp-add-shelf" type="button" class="storybook-btn-primary rounded-xl px-2.5 py-1.5 text-xs font-bold cursor-pointer shrink-0">+ Add Shelf</button>
+      </div>
+      ${(hall.shelves || []).length > 0 ? `
+        <div class="space-y-1.5">
+          ${hall.shelves.map((sh) => {
+            const shCount = hall.books.filter(b => b.shelfId === sh.id).length;
+            return `
+              <div class="rounded-xl p-2 space-y-1.5" style="background:var(--ui-surface-alt); border:1.4px solid var(--ui-border);">
+                <div class="flex items-center gap-1.5">
+                  <input data-rename-shelf="${sh.id}" type="text" value="${esc(sh.name)}" placeholder="Shelf name…"
+                         class="storybook-input flex-1 min-w-0 rounded-lg px-2 py-1 text-xs font-storybook font-bold" />
+                  <span class="text-[10.5px] font-semibold shrink-0 px-1.5 py-0.5 rounded-full" style="background:var(--ui-surface); color:var(--ui-muted);">${shCount}</span>
+                  <button type="button" data-del-shelf="${sh.id}" title="Remove shelf '${esc(sh.name)}' (keeps all books)"
+                          class="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold cursor-pointer bg-transparent border border-red-400/40 text-red-600 hover:bg-red-500/10">&times;</button>
+                </div>
+                <div class="flex items-center gap-1 flex-wrap">
+                  <button type="button" data-shelf-add-book="${sh.id}" class="storybook-btn rounded-lg px-2 py-0.5 text-[10.5px] font-bold cursor-pointer">+ Book</button>
+                  <button type="button" data-shelf-add-scroll="${sh.id}" class="storybook-btn rounded-lg px-2 py-0.5 text-[10.5px] font-semibold cursor-pointer">+ Scroll</button>
+                  <button type="button" data-shelf-add-dnd="${sh.id}" class="storybook-btn rounded-lg px-2 py-0.5 text-[10.5px] font-bold cursor-pointer">+ D&amp;D</button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : `<p class="text-[11px] italic" style="color:var(--ui-muted);">Add named shelves to group books into partially filled sections (like families, factions, or arcs).</p>`}
+    </div>
+
+    <div class="pt-3 border-t space-y-2" style="border-color:var(--ui-border);">
+      <div class="flex items-center justify-between gap-1.5 flex-wrap">
         <span class="text-xs font-semibold" style="color:var(--ui-muted);">Shelf Items (${hall.books.length})</span>
         <div class="flex items-center gap-1 flex-wrap">
           ${hall.books.length > 0 ? `<button id="insp-toggle-organize" type="button" class="storybook-btn ${hallOrganizeMode ? 'active' : ''} rounded-xl px-2 py-1 text-[11px] font-bold cursor-pointer" title="Toggle tap buttons to reorder, move, or recycle shelf items">${hallOrganizeMode ? 'Done' : 'Organize'}</button>` : ''}
@@ -2090,6 +2191,7 @@ function renderInspector() {
           const bsw = getSwatch(b.color || hall.color);
           const isSc = isScrollItem(b);
           const isDnd = isCharacterBook(b);
+          const shelfObj = (hall.shelves || []).find(s => s.id === b.shelfId);
           return `
             <div class="space-y-1">
               <button data-open-book="${b.id}" data-book-idx="${idx}" draggable="true" class="insp-book-row w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs storybook-btn cursor-pointer text-left">
@@ -2100,6 +2202,7 @@ function renderInspector() {
                     : `<span class="w-3 h-4 rounded-sm shrink-0" style="background:${bsw.fill}; border:1px solid #3c2516;"></span>`
                   }
                   <span class="truncate">${esc(b.title)}${b.pinned ? ' &#9733;' : ''}</span>
+                  ${shelfObj ? `<span class="text-[9.5px] font-bold px-1.5 py-0.2 rounded-full shrink-0" style="background:var(--ui-accent-soft); color:var(--ui-accent);">${esc(truncate(shelfObj.name, 14))}</span>` : ''}
                 </span>
                 <span class="text-[11px] shrink-0" style="color:var(--ui-muted);">${isSc ? 'Scroll' : (isDnd ? `D&amp;D ${b.dndChar.edition === '5e' ? '5e' : '24'}` : `${b.pages.length} pp`)} &rarr;</span>
               </button>
@@ -2108,6 +2211,11 @@ function renderInspector() {
                   <button type="button" data-insp-move-up="${b.id}" data-insp-idx="${idx}" ${idx === 0 ? 'disabled' : ''} title="Move earlier on shelf" class="storybook-btn rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer disabled:opacity-35">&uarr;</button>
                   <button type="button" data-insp-move-down="${b.id}" data-insp-idx="${idx}" ${idx === hall.books.length - 1 ? 'disabled' : ''} title="Move later on shelf" class="storybook-btn rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer disabled:opacity-35">&darr;</button>
                   <button type="button" data-insp-pin-book="${b.id}" title="${b.pinned ? 'Remove from Study Table' : 'Stack on Study Table'}" class="storybook-btn ${b.pinned ? 'active' : ''} rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer">${b.pinned ? '&#9733; Table' : '&#9734; Table'}</button>
+                  ${(hall.shelves || []).length > 1 ? `
+                    <select data-insp-move-shelf="${b.id}" title="Move to another Shelf in this Hall" class="storybook-input rounded-lg px-1.5 py-1 text-[11px] max-w-[130px] cursor-pointer">
+                      ${hall.shelves.map(sh => `<option value="${sh.id}" ${b.shelfId === sh.id ? 'selected' : ''}>Shelf: ${esc(truncate(sh.name, 16))}</option>`).join('')}
+                    </select>
+                  ` : ''}
                   <select data-insp-move-hall="${b.id}" title="Move to another Hall" class="storybook-input rounded-lg px-1.5 py-1 text-[11px] max-w-[130px] cursor-pointer">
                     <option value="" selected>Move to Hall…</option>
                     ${buildHallOptionsHTML(hall.id)}
@@ -2148,6 +2256,37 @@ function renderInspector() {
   inspBody.querySelectorAll('[data-jump-sub]').forEach(btn => {
     btn.addEventListener('click', () => selectNode('hall', btn.dataset.jumpSub, true));
   });
+
+  // Named Shelves controls
+  const newShelfInp = document.getElementById('insp-new-shelf-name');
+  const submitNewShelf = () => {
+    const nm = (newShelfInp?.value || '').trim();
+    createShelf(hall.id, nm);
+  };
+  document.getElementById('insp-add-shelf')?.addEventListener('click', submitNewShelf);
+  newShelfInp?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); submitNewShelf(); }
+  });
+  inspBody.querySelectorAll('[data-rename-shelf]').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const sh = (hall.shelves || []).find(s => s.id === inp.dataset.renameShelf);
+      if (sh) { sh.name = inp.value; persistState(); renderMap(); }
+    });
+    inp.addEventListener('change', () => pushHistory());
+  });
+  inspBody.querySelectorAll('[data-del-shelf]').forEach(btn => {
+    btn.addEventListener('click', () => deleteShelf(hall.id, btn.dataset.delShelf));
+  });
+  inspBody.querySelectorAll('[data-shelf-add-book]').forEach(btn => {
+    btn.addEventListener('click', () => createBook(hall.id, btn.dataset.shelfAddBook));
+  });
+  inspBody.querySelectorAll('[data-shelf-add-scroll]').forEach(btn => {
+    btn.addEventListener('click', () => createScroll(hall.id, btn.dataset.shelfAddScroll));
+  });
+  inspBody.querySelectorAll('[data-shelf-add-dnd]').forEach(btn => {
+    btn.addEventListener('click', () => createCharacterBook(hall.id, '2024', btn.dataset.shelfAddDnd));
+  });
+
   document.getElementById('insp-toggle-organize')?.addEventListener('click', () => {
     hallOrganizeMode = !hallOrganizeMode;
     renderInspector();
@@ -2170,6 +2309,16 @@ function renderInspector() {
   });
   inspBody.querySelectorAll('[data-insp-pin-book]').forEach(btn => {
     btn.addEventListener('click', () => togglePinBook(btn.dataset.inspPinBook));
+  });
+  inspBody.querySelectorAll('[data-insp-move-shelf]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const book = hall.books.find(b => b.id === sel.dataset.inspMoveShelf);
+      if (!book || book.shelfId === sel.value) return;
+      book.shelfId = sel.value;
+      const sh = (hall.shelves || []).find(s => s.id === sel.value);
+      commitChange();
+      showToast(`Moved "${book.title}" to shelf "${sh?.name || 'Shelf'}"`);
+    });
   });
   inspBody.querySelectorAll('[data-insp-move-hall]').forEach(sel => {
     sel.addEventListener('change', () => {

@@ -303,15 +303,19 @@ function renderBookshelfBaySVG(bayGeom, ink, wallColor, wallHighlight, glow) {
 
   let addSlotHtml = '';
   if (addSlotX !== null) {
+    const shelfAttr = bayGeom.shelfId ? ` data-shelf-id="${bayGeom.shelfId}"` : '';
+    const slotTitle = bayGeom.shelfName
+      ? `Shelve a new book on "${esc(bayGeom.shelfName)}"`
+      : `Shelve a new book in ${esc(hall.title)}`;
     addSlotHtml = `
-      <g class="shelf-slot-add-hit node-interactive" data-action="add-book" data-hall-id="${hall.id}" transform="translate(${addSlotX.toFixed(1)}, 0)">
+      <g class="shelf-slot-add-hit node-interactive" data-action="add-book" data-hall-id="${hall.id}"${shelfAttr} transform="translate(${addSlotX.toFixed(1)}, 0)">
         <rect x="-13" y="${shelfFloorY - 88}" width="26" height="90" fill="transparent" />
         <g class="shelf-slot-add-inner">
           <path d="M -10 ${shelfFloorY} L -10 ${shelfFloorY - 76} Q 0 ${shelfFloorY - 82} 10 ${shelfFloorY - 76} L 10 ${shelfFloorY} Z"
                 fill="${isCandlelight ? 'rgba(255,235,190,0.08)' : 'rgba(255,250,240,0.45)'}"
                 stroke="${sw.accent}" stroke-width="1.9" stroke-dasharray="4 3" stroke-linejoin="round" />
           <path d="M -4.5 ${shelfFloorY - 40} H 4.5 M 0 ${shelfFloorY - 44.5} V ${shelfFloorY - 35.5}" stroke="${sw.accent}" stroke-width="2.3" stroke-linecap="round" />
-          <title>Shelve a new book in ${esc(hall.title)}</title>
+          <title>${slotTitle}</title>
         </g>
       </g>
     `;
@@ -342,6 +346,22 @@ function renderBookshelfBaySVG(bayGeom, ink, wallColor, wallHighlight, glow) {
     ? `<line x1="${bayGeom.anchorX.toFixed(1)}" y1="${bayGeom.anchorY.toFixed(1)}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${sw.deep}" stroke-width="3" stroke-dasharray="5 5" opacity="0.45" />`
     : '';
 
+  let nameplateHtml = '';
+  if (bayGeom.shelfName) {
+    const lbl = truncate(bayGeom.shelfName, 24);
+    const plateW = Math.min(outerW - 14, Math.max(66, lbl.length * 6.5 + 22));
+    const plateY = shelfFloorY + 5;
+    nameplateHtml = `
+      <g class="node-interactive" data-action="select-hall" data-hall-id="${hall.id}" transform="translate(0, ${plateY.toFixed(1)})">
+        <rect x="${(-plateW / 2).toFixed(1)}" y="-8.5" width="${plateW.toFixed(1)}" height="17" rx="8.5"
+              fill="${isCandlelight ? '#2f1e14' : '#fff7e3'}" stroke="${sw.fill}" stroke-width="1.7" />
+        <text x="0" y="3.5" text-anchor="middle" font-size="9.5" font-weight="800" font-family="Georgia, serif"
+              fill="${isCandlelight ? '#f6e7cc' : '#3a2212'}">${esc(lbl)}</text>
+        <title>Shelf: ${esc(bayGeom.shelfName)} (click to manage shelves)</title>
+      </g>
+    `;
+  }
+
   return `
     ${tetherHtml}
     <g class="bookshelf-bay" transform="translate(${x.toFixed(1)}, ${y.toFixed(1)})">
@@ -368,6 +388,7 @@ function renderBookshelfBaySVG(bayGeom, ink, wallColor, wallHighlight, glow) {
       <path d="M ${(-halfOutW + 8).toFixed(1)} ${shelfFloorY + 11} L ${(-halfOutW + 20).toFixed(1)} ${shelfFloorY + 11} L ${(-halfOutW + 17).toFixed(1)} ${shelfFloorY + 19} Q ${(-halfOutW + 14).toFixed(1)} ${shelfFloorY + 21} ${(-halfOutW + 10).toFixed(1)} ${shelfFloorY + 19} Z
                M ${(halfOutW - 20).toFixed(1)} ${shelfFloorY + 11} L ${(halfOutW - 8).toFixed(1)} ${shelfFloorY + 11} L ${(halfOutW - 10).toFixed(1)} ${shelfFloorY + 19} Q ${(halfOutW - 14).toFixed(1)} ${shelfFloorY + 21} ${(halfOutW - 17).toFixed(1)} ${shelfFloorY + 19} Z"
             fill="${wallColor}" stroke="${ink}" stroke-width="1.7" stroke-linejoin="round" />
+      ${nameplateHtml}
     </g>
   `;
 }
