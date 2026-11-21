@@ -675,6 +675,19 @@ function deleteShelf(hallId, shelfId) {
   showToast(`Removed shelf "${removed.name}"${fallbackId ? ' (books moved to ' + hall.shelves[0].name + ')' : ''}`);
 }
 
+function moveShelf(hallId, shelfId, delta) {
+  const info = findHallInfo(hallId);
+  if (!info) return;
+  const shelves = info.hall.shelves;
+  if (!Array.isArray(shelves) || shelves.length < 2) return;
+  const idx = shelves.findIndex(s => s.id === shelfId);
+  const nextIdx = idx + delta;
+  if (idx === -1 || nextIdx < 0 || nextIdx >= shelves.length) return;
+  const [moved] = shelves.splice(idx, 1);
+  shelves.splice(nextIdx, 0, moved);
+  commitChange();
+}
+
 function resolveTargetShelfId(hall, requestedShelfId) {
   if (!Array.isArray(hall.shelves) || hall.shelves.length === 0) return null;
   if (requestedShelfId && hall.shelves.some(s => s.id === requestedShelfId)) return requestedShelfId;
@@ -2153,11 +2166,17 @@ function renderInspector() {
       </div>
       ${(hall.shelves || []).length > 0 ? `
         <div class="space-y-1.5">
-          ${hall.shelves.map((sh) => {
+          ${hall.shelves.map((sh, shIdx) => {
             const shCount = hall.books.filter(b => b.shelfId === sh.id).length;
             return `
               <div class="rounded-xl p-2 space-y-1.5" style="background:var(--ui-surface-alt); border:1.4px solid var(--ui-border);">
-                <div class="flex items-center gap-1.5">
+                <div class="flex items-center gap-1">
+                  ${hall.shelves.length > 1 ? `
+                    <button type="button" data-shelf-up="${sh.id}" ${shIdx === 0 ? 'disabled' : ''} title="Move shelf up"
+                            class="storybook-btn rounded-lg w-6 h-7 flex items-center justify-center text-[11px] font-bold cursor-pointer disabled:opacity-35 shrink-0">&uarr;</button>
+                    <button type="button" data-shelf-down="${sh.id}" ${shIdx === hall.shelves.length - 1 ? 'disabled' : ''} title="Move shelf down"
+                            class="storybook-btn rounded-lg w-6 h-7 flex items-center justify-center text-[11px] font-bold cursor-pointer disabled:opacity-35 shrink-0">&darr;</button>
+                  ` : ''}
                   <input data-rename-shelf="${sh.id}" type="text" value="${esc(sh.name)}" placeholder="Shelf name…"
                          class="storybook-input flex-1 min-w-0 rounded-lg px-2 py-1 text-xs font-storybook font-bold" />
                   <span class="text-[10.5px] font-semibold shrink-0 px-1.5 py-0.5 rounded-full" style="background:var(--ui-surface); color:var(--ui-muted);">${shCount}</span>
@@ -2273,6 +2292,12 @@ function renderInspector() {
       if (sh) { sh.name = inp.value; persistState(); renderMap(); }
     });
     inp.addEventListener('change', () => pushHistory());
+  });
+  inspBody.querySelectorAll('[data-shelf-up]').forEach(btn => {
+    btn.addEventListener('click', () => moveShelf(hall.id, btn.dataset.shelfUp, -1));
+  });
+  inspBody.querySelectorAll('[data-shelf-down]').forEach(btn => {
+    btn.addEventListener('click', () => moveShelf(hall.id, btn.dataset.shelfDown, 1));
   });
   inspBody.querySelectorAll('[data-del-shelf]').forEach(btn => {
     btn.addEventListener('click', () => deleteShelf(hall.id, btn.dataset.delShelf));

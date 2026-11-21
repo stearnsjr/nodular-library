@@ -346,16 +346,20 @@ function renderBookshelfBaySVG(bayGeom, ink, wallColor, wallHighlight, glow) {
     ? `<line x1="${bayGeom.anchorX.toFixed(1)}" y1="${bayGeom.anchorY.toFixed(1)}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${sw.deep}" stroke-width="3" stroke-dasharray="5 5" opacity="0.45" />`
     : '';
 
-  let nameplateHtml = '';
+  let topCrestHtml = `
+      <circle cx="0" cy="${(archPeakY + 14).toFixed(1)}" r="5.8" fill="${sw.fill}" stroke="${ink}" stroke-width="1.5" />
+      <circle cx="-1.4" cy="${(archPeakY + 12.6).toFixed(1)}" r="1.7" fill="#fffaf0" opacity="0.65" />
+  `;
   if (bayGeom.shelfName) {
     const lbl = truncate(bayGeom.shelfName, 24);
-    const plateW = Math.min(outerW - 14, Math.max(66, lbl.length * 6.5 + 22));
-    const plateY = shelfFloorY + 5;
-    nameplateHtml = `
+    const plateW = Math.min(outerW - 10, Math.max(72, lbl.length * 6.5 + 30));
+    const plateY = archPeakY + 12;
+    topCrestHtml = `
       <g class="node-interactive" data-action="select-hall" data-hall-id="${hall.id}" transform="translate(0, ${plateY.toFixed(1)})">
-        <rect x="${(-plateW / 2).toFixed(1)}" y="-8.5" width="${plateW.toFixed(1)}" height="17" rx="8.5"
-              fill="${isCandlelight ? '#2f1e14' : '#fff7e3'}" stroke="${sw.fill}" stroke-width="1.7" />
-        <text x="0" y="3.5" text-anchor="middle" font-size="9.5" font-weight="800" font-family="Georgia, serif"
+        <rect x="${(-plateW / 2).toFixed(1)}" y="-9.5" width="${plateW.toFixed(1)}" height="19" rx="9.5"
+              fill="${isCandlelight ? '#2f1e14' : '#fff7e3'}" stroke="${sw.fill}" stroke-width="1.8" />
+        <circle cx="${(-plateW / 2 + 10).toFixed(1)}" cy="0" r="3.4" fill="${sw.fill}" stroke="${ink}" stroke-width="1.1" />
+        <text x="5" y="3.5" text-anchor="middle" font-size="9.5" font-weight="800" font-family="Georgia, serif"
               fill="${isCandlelight ? '#f6e7cc' : '#3a2212'}">${esc(lbl)}</text>
         <title>Shelf: ${esc(bayGeom.shelfName)} (click to manage shelves)</title>
       </g>
@@ -370,8 +374,6 @@ function renderBookshelfBaySVG(bayGeom, ink, wallColor, wallHighlight, glow) {
             fill="${wallColor}" stroke="${bayHasBookMatch ? glowCore : ink}" stroke-width="${bayHasBookMatch ? 3.2 : 2.6}" stroke-linejoin="round" filter="url(#shelfShadow)" />
       <path d="M ${(-halfOutW + 4).toFixed(1)} ${frameTopY + 2} C ${(-halfOutW * 0.52).toFixed(1)} ${archPeakY + 4} ${(halfOutW * 0.52).toFixed(1)} ${archPeakY + 4} ${(halfOutW - 4).toFixed(1)} ${frameTopY + 2}"
             fill="none" stroke="${wallHighlight}" stroke-width="3" stroke-linecap="round" />
-      <circle cx="0" cy="${(archPeakY + 14).toFixed(1)}" r="5.8" fill="${sw.fill}" stroke="${ink}" stroke-width="1.5" />
-      <circle cx="-1.4" cy="${(archPeakY + 12.6).toFixed(1)}" r="1.7" fill="#fffaf0" opacity="0.65" />
 
       <path d="M ${-halfInW} ${shelfFloorY} L ${-halfInW} ${shelfTopY + 6} C ${-halfInW * 0.55} ${shelfTopY - 12} ${halfInW * 0.55} ${shelfTopY - 12} ${halfInW} ${shelfTopY + 6} L ${halfInW} ${shelfFloorY} Z"
             fill="url(#${shelfBackGrad})" stroke="${ink}" stroke-width="1.8" />
@@ -388,7 +390,7 @@ function renderBookshelfBaySVG(bayGeom, ink, wallColor, wallHighlight, glow) {
       <path d="M ${(-halfOutW + 8).toFixed(1)} ${shelfFloorY + 11} L ${(-halfOutW + 20).toFixed(1)} ${shelfFloorY + 11} L ${(-halfOutW + 17).toFixed(1)} ${shelfFloorY + 19} Q ${(-halfOutW + 14).toFixed(1)} ${shelfFloorY + 21} ${(-halfOutW + 10).toFixed(1)} ${shelfFloorY + 19} Z
                M ${(halfOutW - 20).toFixed(1)} ${shelfFloorY + 11} L ${(halfOutW - 8).toFixed(1)} ${shelfFloorY + 11} L ${(halfOutW - 10).toFixed(1)} ${shelfFloorY + 19} Q ${(halfOutW - 14).toFixed(1)} ${shelfFloorY + 21} ${(halfOutW - 17).toFixed(1)} ${shelfFloorY + 19} Z"
             fill="${wallColor}" stroke="${ink}" stroke-width="1.7" stroke-linejoin="round" />
-      ${nameplateHtml}
+      ${topCrestHtml}
     </g>
   `;
 }
