@@ -1224,4 +1224,26 @@ body.lib-candlelight .oak-tabletop-plank {
   .page-img-del {
     opacity: 1 !important;
   }
+
+  /* Prevent Android Chrome / mobile Skia GPU tile flickering during SVG pan & pinch-zoom */
+  #scene-content [filter="url(#bookShadow)"],
+  #scene-content [filter="url(#shelfShadow)"] {
+    filter: none !important;
+  }
+}
+
+/* Pause ambient SVG CSS animations while actively panning or pinching */
+#canvas-wrap.dragging .mote,
+#canvas-wrap.dragging .lantern-halo,
+#canvas-wrap.dragging .library-cat-body,
+#canvas-wrap.dragging .library-cat-tail,
+#canvas-wrap.dragging .library-cat-z1,
+#canvas-wrap.dragging .library-cat-z2,
+#canvas-wrap.pinching .mote,
+#canvas-wrap.pinching .lantern-halo,
+#canvas-wrap.pinching .library-cat-body,
+#canvas-wrap.pinching .library-cat-tail,
+#canvas-wrap.pinching .library-cat-z1,
+#canvas-wrap.pinching .library-cat-z2 {
+  animation-play-state: paused !important;
 }

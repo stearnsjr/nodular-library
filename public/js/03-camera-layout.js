@@ -20,13 +20,29 @@ function screenToWorld(clientX, clientY) {
   };
 }
 
+let cameraRafId = null;
+
 function applyCamera() {
+  if (cameraRafId !== null) {
+    cancelAnimationFrame(cameraRafId);
+    cameraRafId = null;
+  }
   const rect = canvasWrap.getBoundingClientRect();
   const tx = rect.width / 2 + cam.x;
   const ty = rect.height / 2 + cam.y;
   worldEl.setAttribute('transform', `translate(${tx.toFixed(2)}, ${ty.toFixed(2)}) scale(${cam.scale.toFixed(4)})`);
   document.getElementById('zoom-readout').textContent = `${Math.round(cam.scale * 100)}%`;
-  updateMinimapViewport();
+  if (typeof minimapCollapsed === 'undefined' || !minimapCollapsed) {
+    updateMinimapViewport();
+  }
+}
+
+function scheduleApplyCamera() {
+  if (cameraRafId !== null) return;
+  cameraRafId = requestAnimationFrame(() => {
+    cameraRafId = null;
+    applyCamera();
+  });
 }
 
 function flyTo(worldX, worldY, targetScale = null, duration = 420) {
@@ -84,6 +100,7 @@ function beginPinchGesture() {
   dragOverlayEl.innerHTML = '';
   clearCornerDropHighlights();
   canvasWrap.classList.remove('dragging', 'dragging-angle', 'dragging-book');
+  canvasWrap.classList.add('pinching');
   sceneEl.querySelectorAll('.is-dragging-source').forEach(el => el.classList.remove('is-dragging-source'));
   angleDrag = null;
   bookDrag = null;
@@ -380,7 +397,7 @@ window.addEventListener('pointermove', (e) => {
       cam.scale = newScale;
       cam.x = curRelX - (startRelX - pinchStart.camX) * ratio;
       cam.y = curRelY - (startRelY - pinchStart.camY) * ratio;
-      applyCamera();
+      scheduleApplyCamera();
     }
     return;
   }
@@ -396,7 +413,7 @@ window.addEventListener('pointermove', (e) => {
 
   if (pointerMode === 'pan') {
     if (Math.hypot(dx, dy) > panThreshold) dragMoved = true;
-    if (dragMoved) { cam.x = dragStart.camX + dx; cam.y = dragStart.camY + dy; applyCamera(); }
+    if (dragMoved) { cam.x = dragStart.camX + dx; cam.y = dragStart.camY + dy; scheduleApplyCamera(); }
     return;
   }
 
@@ -470,12 +487,13 @@ window.addEventListener('pointerup', (e) => {
       pinchStart = null;
       pointerMode = 'pan';
       dragMoved = true;
+      canvasWrap.classList.remove('pinching');
       canvasWrap.classList.add('dragging');
     } else if (activePointers.size === 0) {
       pinchStart = null;
       primaryPointerId = null;
       pointerMode = 'idle';
-      canvasWrap.classList.remove('dragging');
+      canvasWrap.classList.remove('dragging', 'pinching');
       suppressNextClick = true;
       setTimeout(() => { suppressNextClick = false; }, 80);
     }
@@ -555,7 +573,7 @@ window.addEventListener('pointercancel', (e) => {
   if (pointerMode === 'idle') return;
   dragOverlayEl.innerHTML = '';
   clearCornerDropHighlights();
-  canvasWrap.classList.remove('dragging', 'dragging-angle', 'dragging-book');
+  canvasWrap.classList.remove('dragging', 'pinching', 'dragging-angle', 'dragging-book');
   angleDrag = null;
   bookDrag = null;
   paperDrag = null;
