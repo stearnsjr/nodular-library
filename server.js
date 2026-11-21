@@ -291,6 +291,94 @@ const server = http.createServer(async (req, res) => {
 
   if (!checkAuth(req, res)) return;
 
+  if (pathname === '/api/link-preview' && req.method === 'GET') {
+    const rawUrl = (url.searchParams.get('url') || '').trim();
+    let parsed;
+    try {
+      parsed = new URL(/^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`);
+    } catch (e) {
+      sendJson(res, 400, { error: 'Invalid URL' });
+      return;
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      sendJson(res, 400, { error: 'Unsupported protocol' });
+      return;
+    }
+    const host = parsed.hostname.toLowerCase();
+    const isPrivateHost =
+      host === 'localhost' || host === '::1' || host.endsWith('.local') || host.endsWith('.internal') ||
+      /^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host) ||
+      /^169\.254\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+
+    const fallbackFromUrl = () => {
+      const cleanHost = host.replace(/^www\./, '');
+      const segs = parsed.pathname.split('/').filter(Boolean);
+      if (segs.length > 0) {
+        const last = decodeURIComponent(segs[segs.length - 1]).replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[-_]+/g, ' ').trim();
+        if (last && last.length >= 2 && !/^\d+$/.test(last)) {
+          const titled = last.replace(/\b\w/g, (c) => c.toUpperCase());
+          return `${titled.slice(0, 64)} — ${cleanHost}`;
+        }
+      }
+      return cleanHost;
+    };
+
+    const decodeEntities = (str) => String(str || '')
+      .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+      .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
+      .replace(/&mdash;/g, '—').replace(/&ndash;/g, '–').replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ').trim();
+
+    if (isPrivateHost) {
+      sendJson(res, 200, { ok: true, title: fallbackFromUrl(), url: parsed.href });
+      return;
+    }
+
+    try {
+      const resp = await fetch(parsed.href, {
+        method: 'GET',
+        redirect: 'follow',
+        signal: AbortSignal.timeout(3500),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; StorytellersLibrary/1.0)',
+          'Accept': 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1'
+        }
+      });
+      const ctype = String(resp.headers.get('content-type') || '').toLowerCase();
+      let title = '';
+      if (resp.ok && (ctype.includes('text/html') || ctype.includes('xhtml'))) {
+        const reader = resp.body?.getReader?.();
+        let html = '';
+        if (reader) {
+          const dec = new TextDecoder('utf-8', { fatal: false });
+          let bytes = 0;
+          while (bytes < 65536) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            bytes += value.byteLength;
+            html += dec.decode(value, { stream: true });
+            if (/<\/head>/i.test(html)) break;
+          }
+          try { reader.cancel(); } catch (e) {}
+        } else {
+          html = (await resp.text()).slice(0, 65536);
+        }
+        const ogMatch =
+          html.match(/<meta[^>]+(?:property|name)=["'](?:og:title|twitter:title)["'][^>]+content=["']([^"']+)["']/i) ||
+          html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:title|twitter:title)["']/i);
+        const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        const rawTitle = (ogMatch && ogMatch[1]) || (titleMatch && titleMatch[1]) || '';
+        title = decodeEntities(rawTitle).slice(0, 96);
+      }
+      sendJson(res, 200, { ok: true, title: title || fallbackFromUrl(), url: parsed.href });
+    } catch (err) {
+      sendJson(res, 200, { ok: true, title: fallbackFromUrl(), url: parsed.href });
+    }
+    return;
+  }
+
   if (pathname === '/api/libraries' && req.method === 'GET') {
     try {
       const libs = listLibraries();

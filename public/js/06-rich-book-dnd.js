@@ -64,12 +64,44 @@ function makeInlineImageCard(dataUrl) {
   wrap.innerHTML = `<img src="${dataUrl}" alt="Page image" /><button type="button" class="page-img-del" title="Remove image">&times;</button>`;
   return wrap;
 }
+function prettyUrlLabel(rawUrl) {
+  try {
+    const u = new URL(normalizeUrl(rawUrl));
+    const host = u.hostname.replace(/^www\./i, '');
+    const segs = u.pathname.split('/').filter(Boolean);
+    if (segs.length > 0) {
+      const last = decodeURIComponent(segs[segs.length - 1]).replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[-_]+/g, ' ').trim();
+      if (last && last.length >= 2 && !/^\d+$/.test(last)) {
+        const titled = last.replace(/\b\w/g, (c) => c.toUpperCase());
+        return `${titled.slice(0, 64)} — ${host}`;
+      }
+    }
+    return host || rawUrl;
+  } catch (e) {
+    return rawUrl;
+  }
+}
+
 function makeHyperlinkNode(label, href) {
   const a = document.createElement('a');
   a.className = 'lib-ext-link';
   a.href = normalizeUrl(href); a.target = '_blank'; a.rel = 'noopener noreferrer';
-  a.textContent = (label || href).trim(); a.title = `Open external link: ${a.href}`;
+  a.textContent = (label || prettyUrlLabel(href)).trim(); a.title = `Open external link: ${a.href}`;
   return a;
+}
+
+async function enhanceSmartLink(anchorEl, rawUrl, syncFn) {
+  if (!anchorEl || !SERVER_SYNC_SUPPORTED) return;
+  const initialText = anchorEl.textContent;
+  try {
+    const resp = await fetch(`/api/link-preview?url=${encodeURIComponent(normalizeUrl(rawUrl))}`, { cache: 'no-store' });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (data && data.title && anchorEl.isConnected && anchorEl.textContent === initialText) {
+      anchorEl.textContent = data.title;
+      if (typeof syncFn === 'function') syncFn(false);
+    }
+  } catch (e) {}
 }
 
 function styleInternalLinkNode(a, bookId) {
@@ -3169,8 +3201,13 @@ function renderOpenBook(animateTurn = false) {
       if (text) {
         e.preventDefault(); saveEditorRange(editorEl);
         const trimmed = text.trim();
-        if (/^https?:\/\/\S+$/i.test(trimmed)) insertNodeAtCaret(editorEl, makeHyperlinkNode(trimmed, trimmed));
-        else {
+        if (/^https?:\/\/\S+$/i.test(trimmed)) {
+          const linkNode = makeHyperlinkNode(prettyUrlLabel(trimmed), trimmed);
+          insertNodeAtCaret(editorEl, linkNode);
+          syncEditorToPage(true);
+          enhanceSmartLink(linkNode, trimmed, syncEditorToPage);
+          return;
+        } else {
           const frag = document.createElement('span');
           frag.innerHTML = plainTextToHtml(text);
           const range = restoreOrEndRange(editorEl);
@@ -3310,10 +3347,13 @@ function renderOpenBook(animateTurn = false) {
       } else {
         const url = linkUrlInp.value.trim();
         if (!url) { linkUrlInp.focus(); return; }
-        const label = linkLabelInp.value.trim() || url;
+        const customLabel = linkLabelInp.value.trim();
+        const label = customLabel || prettyUrlLabel(url);
         linkPop.classList.add('hidden');
-        insertNodeAtCaret(editorEl, makeHyperlinkNode(label, url));
+        const linkNode = makeHyperlinkNode(label, url);
+        insertNodeAtCaret(editorEl, linkNode);
         syncEditorToPage(true);
+        if (!customLabel) enhanceSmartLink(linkNode, url, syncEditorToPage);
         showToast('Added external web link ↗');
       }
     };
