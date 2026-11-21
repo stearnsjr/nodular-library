@@ -929,6 +929,15 @@ body.lib-candlelight .oak-tabletop-plank {
   box-shadow: 0 -2px 8px rgba(24, 13, 6, 0.18);
 }
 
+/* Ensure hidden dropdowns/banners stay hidden even when combined with Tailwind flex */
+#menu-tasks.hidden,
+#menu-templates.hidden,
+#menu-io.hidden,
+#search-results.hidden,
+#stamp-lens-bar.hidden {
+  display: none !important;
+}
+
 /* Mobile TOC / Chapters Drawer Overlay inside Single-Page Open Book */
 #book-spread-wrap.is-single-page-mode.mobile-toc-open #open-book-left {
   display: flex !important;
@@ -1119,7 +1128,7 @@ body.lib-candlelight .oak-tabletop-plank {
     flex-direction: column;
   }
   #book-cover-shell {
-    padding: 8px !important;
+    padding: 46px 8px 8px 8px !important;
     border-radius: 18px !important;
     height: 100%;
   }
@@ -1131,10 +1140,10 @@ body.lib-candlelight .oak-tabletop-plank {
     padding: 12px !important;
   }
   #btn-close-book {
-    top: 8px !important;
+    top: 5px !important;
     right: 8px !important;
     min-height: 36px;
-    padding: 5px 10px !important;
+    padding: 5px 12px !important;
     font-size: 11.5px !important;
   }
   #book-top-flippers,

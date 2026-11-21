@@ -493,10 +493,11 @@ function getAllLibraryTasks() {
     tmp.querySelectorAll('.page-todo-item').forEach((row, idx) => {
       const isChecked = row.dataset.checked === 'true';
       const txtEl = row.querySelector('.page-todo-text');
-      const text = (txtEl ? txtEl.textContent : row.textContent || '').trim() || '(Untitled task)';
+      const rawText = (txtEl ? txtEl.textContent : row.textContent || '').replace(/\u200B/g, '').trim();
+      if (!rawText) return;
       tasks.push({
         checked: isChecked,
-        text,
+        text: rawText,
         taskIndex: idx,
         taskIdx: idx,
         pageId: p.id,
