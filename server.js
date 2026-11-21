@@ -239,7 +239,7 @@ function serveStatic(req, res, pathname) {
     : (MIME_TYPES[ext] || 'application/octet-stream');
   res.writeHead(200, {
     'Content-Type': contentType,
-    'Cache-Control': (ext === '.html' || ext === '.css' || ext === '.js') ? 'no-cache' : 'public, max-age=300'
+    'Cache-Control': (ext === '.html' || ext === '.css' || ext === '.js') ? 'no-cache, no-store, must-revalidate' : 'public, max-age=300'
   });
   fs.createReadStream(resolved).pipe(res);
 }
