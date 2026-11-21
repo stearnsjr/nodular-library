@@ -1295,9 +1295,25 @@ function redo() {
   showToast('Redid change');
 }
 
+const ACTIVE_LIB_KEY = 'storytellers_active_library_id_v1';
+let activeLibraryId = 'default';
+try {
+  activeLibraryId = localStorage.getItem(ACTIVE_LIB_KEY) || 'default';
+} catch (e) {}
+let savedLibraries = [];
+
+function getLibStorageKey(id = activeLibraryId) {
+  return (!id || id === 'default') ? STORAGE_KEY : `${STORAGE_KEY}:${id}`;
+}
+
+function setActiveLibraryId(id) {
+  activeLibraryId = id || 'default';
+  try { localStorage.setItem(ACTIVE_LIB_KEY, activeLibraryId); } catch (e) {}
+}
+
 function loadInitialState() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(getLibStorageKey(activeLibraryId)) || localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed.title === 'string' && Array.isArray(parsed.halls)) {
@@ -1316,25 +1332,74 @@ let serverSaveTimer = null;
 let serverSaveInFlight = false;
 let serverSaveQueued = false;
 
+function upsertLocalLibraryMeta(id, st, rev) {
+  const existing = savedLibraries.find(l => l.id === id);
+  const hallCount = Array.isArray(st?.halls) ? st.halls.length : 0;
+  let bookCount = 0;
+  const walk = (hs) => {
+    for (const h of hs || []) {
+      bookCount += (h.books || []).length;
+      if (h.subHalls) walk(h.subHalls);
+    }
+  };
+  walk(st?.halls);
+  const updatedAt = new Date().toISOString();
+  if (existing) {
+    existing.title = st?.title || 'Untitled Library';
+    existing.subtitle = st?.subtitle || '';
+    existing.rev = rev || existing.rev;
+    existing.updatedAt = updatedAt;
+    existing.hallCount = hallCount;
+    existing.bookCount = bookCount;
+  } else {
+    savedLibraries.unshift({
+      id,
+      title: st?.title || 'Untitled Library',
+      subtitle: st?.subtitle || '',
+      rev: rev || 1,
+      updatedAt,
+      hallCount,
+      bookCount
+    });
+  }
+  if (typeof renderLibrariesMenu === 'function') renderLibrariesMenu();
+}
+
+async function refreshLibraryList() {
+  if (!SERVER_SYNC_SUPPORTED) return savedLibraries;
+  try {
+    const resp = await fetch('/api/libraries', { cache: 'no-store' });
+    if (!resp.ok) return savedLibraries;
+    const data = await resp.json();
+    if (data && Array.isArray(data.libraries)) {
+      savedLibraries = data.libraries;
+      if (typeof renderLibrariesMenu === 'function') renderLibrariesMenu();
+    }
+  } catch (err) {}
+  return savedLibraries;
+}
+
 async function flushServerSave(force = false) {
   if (!SERVER_SYNC_SUPPORTED || !serverSyncReady) return;
   if (serverSaveInFlight) { serverSaveQueued = true; return; }
   serverSaveInFlight = true;
   serverSaveQueued = false;
+  const saveLibId = activeLibraryId;
   try {
-    const resp = await fetch('/api/state', {
+    const resp = await fetch(`/api/state?id=${encodeURIComponent(saveLibId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ baseRev: serverRev, state, force })
+      body: JSON.stringify({ id: saveLibId, baseRev: serverRev, state, force })
     });
     if (resp.status === 409) {
       const conflict = await resp.json().catch(() => null);
-      if (conflict && conflict.state) {
-        const loadNewer = confirm('Another device saved newer changes to your library.\n\nClick OK to load the latest version from the server, or Cancel to keep and overwrite with this device\'s version.');
+      if (conflict && conflict.state && saveLibId === activeLibraryId) {
+        const loadNewer = confirm('Another device saved newer changes to this library.\n\nClick OK to load the latest version from the server, or Cancel to keep and overwrite with this device\'s version.');
         if (loadNewer) {
           serverRev = conflict.rev || serverRev;
           state = normalizeLibraryState(conflict.state);
-          try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+          try { localStorage.setItem(getLibStorageKey(activeLibraryId), JSON.stringify(state)); } catch (e) {}
+          upsertLocalLibraryMeta(activeLibraryId, state, serverRev);
           reconcileViews();
           syncSearchMatches();
           renderAll();
@@ -1347,7 +1412,10 @@ async function flushServerSave(force = false) {
       }
     } else if (resp.ok) {
       const data = await resp.json().catch(() => null);
-      if (data && typeof data.rev === 'number') serverRev = data.rev;
+      if (data && typeof data.rev === 'number' && saveLibId === activeLibraryId) {
+        serverRev = data.rev;
+        upsertLocalLibraryMeta(saveLibId, state, serverRev);
+      }
     }
   } catch (err) {
     // Offline or standalone preview — localStorage still holds the state
@@ -1363,26 +1431,158 @@ function scheduleServerSave(delayMs = 450) {
   serverSaveTimer = setTimeout(() => { flushServerSave(false); }, delayMs);
 }
 
+async function switchToLibrary(libId) {
+  if (!libId) return;
+  if (serverSaveTimer) {
+    clearTimeout(serverSaveTimer);
+    serverSaveTimer = null;
+    await flushServerSave(false);
+  }
+  try {
+    const resp = await fetch(`/api/state?id=${encodeURIComponent(libId)}`, { cache: 'no-store' });
+    if (!resp.ok) {
+      showToast('Could not open that library');
+      return;
+    }
+    const data = await resp.json();
+    if (!data || !data.state) {
+      showToast('Library is empty or missing');
+      return;
+    }
+    setActiveLibraryId(data.id || libId);
+    serverRev = typeof data.rev === 'number' ? data.rev : 1;
+    state = normalizeLibraryState(data.state);
+    try { localStorage.setItem(getLibStorageKey(activeLibraryId), JSON.stringify(state)); } catch (e) {}
+    activeStampLensId = null;
+    if (typeof clearSearch === 'function') clearSearch(false);
+    if (typeof closeOpenBook === 'function') closeOpenBook();
+    if (typeof clearSelection === 'function') clearSelection();
+    historyStack = [JSON.stringify(state)];
+    historyIndex = 0;
+    syncSearchMatches();
+    renderAll();
+    updateUndoButtons();
+    if (typeof fitToView === 'function') fitToView(true);
+    if (typeof renderLibrariesMenu === 'function') renderLibrariesMenu();
+    showToast(`Switched to "${state.title}"`);
+  } catch (err) {
+    showToast('Failed to switch library');
+  }
+}
+
+async function createNewLibrary(templateKey = 'blank', customTitle = null) {
+  const tpl = TEMPLATES[templateKey] || TEMPLATES.blank;
+  const nextState = normalizeLibraryState(deepClone(tpl));
+  if (customTitle && customTitle.trim()) {
+    nextState.title = customTitle.trim();
+  }
+  if (serverSaveTimer) {
+    clearTimeout(serverSaveTimer);
+    serverSaveTimer = null;
+    await flushServerSave(false);
+  }
+  if (SERVER_SYNC_SUPPORTED && serverSyncReady) {
+    try {
+      const resp = await fetch('/api/libraries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: nextState })
+      });
+      if (!resp.ok) throw new Error('Create failed');
+      const data = await resp.json();
+      setActiveLibraryId(data.id);
+      serverRev = data.rev || 1;
+      state = nextState;
+      try { localStorage.setItem(getLibStorageKey(activeLibraryId), JSON.stringify(state)); } catch (e) {}
+      await refreshLibraryList();
+    } catch (err) {
+      showToast('Could not create library on server');
+      return;
+    }
+  } else {
+    const localId = `lib-${Date.now().toString(36)}`;
+    setActiveLibraryId(localId);
+    state = nextState;
+    try { localStorage.setItem(getLibStorageKey(activeLibraryId), JSON.stringify(state)); } catch (e) {}
+    upsertLocalLibraryMeta(activeLibraryId, state, 1);
+  }
+  activeStampLensId = null;
+  if (typeof clearSearch === 'function') clearSearch(false);
+  if (typeof closeOpenBook === 'function') closeOpenBook();
+  if (typeof clearSelection === 'function') clearSelection();
+  historyStack = [JSON.stringify(state)];
+  historyIndex = 0;
+  syncSearchMatches();
+  renderAll();
+  updateUndoButtons();
+  if (typeof fitToView === 'function') fitToView(true);
+  showToast(`Created "${state.title}"`);
+}
+
+async function deleteSavedLibrary(libId) {
+  const target = savedLibraries.find(l => l.id === libId);
+  const label = target ? target.title : libId;
+  if (!confirm(`Delete library "${label}"?\n\nA backup copy will be kept in /data/backups on the server.`)) return;
+
+  if (libId === activeLibraryId && serverSaveTimer) {
+    clearTimeout(serverSaveTimer);
+    serverSaveTimer = null;
+  }
+
+  try {
+    const resp = await fetch(`/api/libraries/${encodeURIComponent(libId)}`, { method: 'DELETE' });
+    if (!resp.ok) {
+      showToast('Could not delete library');
+      return;
+    }
+    const data = await resp.json();
+    try { localStorage.removeItem(getLibStorageKey(libId)); } catch (e) {}
+    savedLibraries = Array.isArray(data.libraries) ? data.libraries : savedLibraries.filter(l => l.id !== libId);
+
+    if (libId === activeLibraryId) {
+      if (savedLibraries.length > 0) {
+        await switchToLibrary(savedLibraries[0].id);
+      } else {
+        await createNewLibrary('blank', 'My Library');
+      }
+    } else if (typeof renderLibrariesMenu === 'function') {
+      renderLibrariesMenu();
+    }
+    showToast(`Deleted "${label}"`);
+  } catch (err) {
+    showToast('Failed to delete library');
+  }
+}
+
 async function initServerSync() {
   if (!SERVER_SYNC_SUPPORTED) return;
   try {
-    const resp = await fetch('/api/state', { cache: 'no-store' });
+    const libs = await refreshLibraryList();
+    let targetId = activeLibraryId;
+    if (libs.length > 0 && !libs.some(l => l.id === targetId)) {
+      targetId = libs[0].id;
+      setActiveLibraryId(targetId);
+    }
+    const resp = await fetch(`/api/state?id=${encodeURIComponent(targetId)}`, { cache: 'no-store' });
     if (!resp.ok) return;
     const data = await resp.json();
     serverSyncReady = true;
+    if (data && data.id) setActiveLibraryId(data.id);
     if (data && data.state && typeof data.state.title === 'string' && Array.isArray(data.state.halls)) {
       serverRev = typeof data.rev === 'number' ? data.rev : 1;
       state = normalizeLibraryState(data.state);
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+      try { localStorage.setItem(getLibStorageKey(activeLibraryId), JSON.stringify(state)); } catch (e) {}
       historyStack = [JSON.stringify(state)];
       historyIndex = 0;
       reconcileViews();
       syncSearchMatches();
       renderAll();
       updateUndoButtons();
+      upsertLocalLibraryMeta(activeLibraryId, state, serverRev);
     } else {
       serverRev = 0;
       await flushServerSave(true);
+      await refreshLibraryList();
     }
   } catch (err) {
     // Server API unavailable (e.g. static hosting) — keep using localStorage seamlessly
@@ -1392,17 +1592,18 @@ async function initServerSync() {
 async function checkServerUpdates() {
   if (!SERVER_SYNC_SUPPORTED || !serverSyncReady || serverSaveTimer || serverSaveInFlight) return;
   try {
-    const resp = await fetch('/api/health', { cache: 'no-store' });
+    const resp = await fetch(`/api/health?id=${encodeURIComponent(activeLibraryId)}`, { cache: 'no-store' });
     if (!resp.ok) return;
     const info = await resp.json();
-    if (info && typeof info.rev === 'number' && info.rev > serverRev) {
-      const stateResp = await fetch('/api/state', { cache: 'no-store' });
+    if (info && info.id === activeLibraryId && typeof info.rev === 'number' && info.rev > serverRev) {
+      const stateResp = await fetch(`/api/state?id=${encodeURIComponent(activeLibraryId)}`, { cache: 'no-store' });
       if (!stateResp.ok) return;
       const data = await stateResp.json();
       if (data && data.state) {
         serverRev = data.rev;
         state = normalizeLibraryState(data.state);
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+        try { localStorage.setItem(getLibStorageKey(activeLibraryId), JSON.stringify(state)); } catch (e) {}
+        upsertLocalLibraryMeta(activeLibraryId, state, serverRev);
         reconcileViews();
         syncSearchMatches();
         renderAll();
@@ -1419,13 +1620,14 @@ if (SERVER_SYNC_SUPPORTED && typeof document !== 'undefined') {
 }
 
 function persistState() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+  try { localStorage.setItem(getLibStorageKey(activeLibraryId), JSON.stringify(state)); }
   catch (e) {
     if (!quotaWarned) {
       quotaWarned = true;
       showToast('Browser storage full — relying on server sync / Export (.json)');
     }
   }
+  upsertLocalLibraryMeta(activeLibraryId, state, serverRev);
   scheduleServerSave();
 }
 function commitChange(skipHistory = false) {

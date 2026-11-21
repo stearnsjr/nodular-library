@@ -10,7 +10,8 @@ const HOST = process.env.HOST || '0.0.0.0';
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const PUBLIC_DIR = path.resolve(process.env.PUBLIC_DIR || path.join(__dirname, 'public'));
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
-const STATE_FILE = path.join(DATA_DIR, 'library.json');
+const LIBRARIES_DIR = path.join(DATA_DIR, 'libraries');
+const LEGACY_STATE_FILE = path.join(DATA_DIR, 'library.json');
 const MAX_BACKUPS = Math.max(1, parseInt(process.env.MAX_BACKUPS || '20', 10));
 const BACKUP_MIN_INTERVAL_MS = Math.max(0, parseInt(process.env.BACKUP_INTERVAL_SEC || '60', 10) * 1000);
 const MAX_BODY_BYTES = Math.max(1, parseInt(process.env.MAX_BODY_MB || '50', 10)) * 1024 * 1024;
@@ -18,6 +19,7 @@ const LIBRARY_PASSWORD = process.env.LIBRARY_PASSWORD || '';
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(BACKUP_DIR, { recursive: true });
+fs.mkdirSync(LIBRARIES_DIR, { recursive: true });
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -34,18 +36,50 @@ const MIME_TYPES = {
   '.webmanifest': 'application/manifest+json; charset=utf-8'
 };
 
-let lastBackupAt = 0;
+const lastBackupAtByLib = new Map();
 
-function readEnvelope() {
-  if (!fs.existsSync(STATE_FILE)) {
+function sanitizeLibId(raw) {
+  const clean = String(raw || 'default').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+  return clean || 'default';
+}
+
+function getLibraryFile(libId) {
+  return path.join(LIBRARIES_DIR, `${sanitizeLibId(libId)}.json`);
+}
+
+function countBooksInHalls(halls) {
+  let n = 0;
+  for (const h of halls || []) {
+    n += Array.isArray(h.books) ? h.books.length : 0;
+    if (Array.isArray(h.subHalls)) n += countBooksInHalls(h.subHalls);
+  }
+  return n;
+}
+
+function migrateLegacyStateIfNeeded() {
+  try {
+    const existing = fs.readdirSync(LIBRARIES_DIR).filter((f) => f.endsWith('.json'));
+    if (existing.length === 0 && fs.existsSync(LEGACY_STATE_FILE)) {
+      const target = getLibraryFile('default');
+      fs.copyFileSync(LEGACY_STATE_FILE, target);
+      console.log('[library] Migrated legacy library.json -> libraries/default.json');
+    }
+  } catch (err) {
+    console.error('[library] Legacy migration check failed:', err.message);
+  }
+}
+
+migrateLegacyStateIfNeeded();
+
+function parseEnvelopeFile(filePath) {
+  if (!fs.existsSync(filePath)) {
     return { rev: 0, updatedAt: null, state: null };
   }
   try {
-    const raw = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     if (raw && typeof raw === 'object' && 'state' in raw && typeof raw.rev === 'number') {
       return raw;
     }
-    // Support plain exported library.json dropped directly into /data/library.json
     if (raw && typeof raw.title === 'string' && Array.isArray(raw.halls)) {
       return { rev: 1, updatedAt: new Date().toISOString(), state: raw };
     }
@@ -55,19 +89,61 @@ function readEnvelope() {
   return { rev: 0, updatedAt: null, state: null };
 }
 
-function writeEnvelopeAtomic(envelope) {
-  const tmpFile = `${STATE_FILE}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmpFile, JSON.stringify(envelope), 'utf8');
-  fs.renameSync(tmpFile, STATE_FILE);
+function listLibraries() {
+  migrateLegacyStateIfNeeded();
+  const files = fs.readdirSync(LIBRARIES_DIR).filter((f) => f.endsWith('.json'));
+  const out = [];
+  for (const file of files) {
+    const id = file.slice(0, -5);
+    const filePath = path.join(LIBRARIES_DIR, file);
+    const env = parseEnvelopeFile(filePath);
+    if (!env.state) continue;
+    out.push({
+      id,
+      title: env.state.title || 'Untitled Library',
+      subtitle: env.state.subtitle || '',
+      rev: env.rev || 1,
+      updatedAt: env.updatedAt || fs.statSync(filePath).mtime.toISOString(),
+      hallCount: Array.isArray(env.state.halls) ? env.state.halls.length : 0,
+      bookCount: countBooksInHalls(env.state.halls)
+    });
+  }
+  out.sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  return out;
 }
 
-function maybeWriteRollingBackup(previousEnvelope) {
+function resolveLibraryId(requestedId) {
+  migrateLegacyStateIfNeeded();
+  if (requestedId) return sanitizeLibId(requestedId);
+  const defaultFile = getLibraryFile('default');
+  if (fs.existsSync(defaultFile)) return 'default';
+  const libs = listLibraries();
+  return libs.length > 0 ? libs[0].id : 'default';
+}
+
+function readEnvelope(libId) {
+  const id = resolveLibraryId(libId);
+  const env = parseEnvelopeFile(getLibraryFile(id));
+  return { id, ...env };
+}
+
+function writeEnvelopeAtomic(libId, envelope) {
+  const id = sanitizeLibId(libId);
+  const targetFile = getLibraryFile(id);
+  const tmpFile = `${targetFile}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmpFile, JSON.stringify(envelope), 'utf8');
+  fs.renameSync(tmpFile, targetFile);
+}
+
+function maybeWriteRollingBackup(libId, previousEnvelope, force = false) {
   if (!previousEnvelope || !previousEnvelope.state) return;
+  const id = sanitizeLibId(libId);
   const now = Date.now();
-  if (now - lastBackupAt < BACKUP_MIN_INTERVAL_MS) return;
-  lastBackupAt = now;
+  const lastAt = lastBackupAtByLib.get(id) || 0;
+  if (!force && now - lastAt < BACKUP_MIN_INTERVAL_MS) return;
+  lastBackupAtByLib.set(id, now);
   const stamp = new Date(now).toISOString().replace(/[:.]/g, '-');
-  const backupPath = path.join(BACKUP_DIR, `library-rev${previousEnvelope.rev}-${stamp}.json`);
+  const backupPath = path.join(BACKUP_DIR, `library-${id}-rev${previousEnvelope.rev}-${stamp}.json`);
   try {
     fs.writeFileSync(backupPath, JSON.stringify(previousEnvelope), 'utf8');
     const files = fs.readdirSync(BACKUP_DIR)
@@ -174,15 +250,86 @@ const server = http.createServer(async (req, res) => {
 
   // Health endpoint for Docker HEALTHCHECK (no auth required)
   if (pathname === '/api/health' && req.method === 'GET') {
-    const env = readEnvelope();
-    sendJson(res, 200, { ok: true, rev: env.rev, updatedAt: env.updatedAt });
+    const reqId = url.searchParams.get('id') || '';
+    const env = readEnvelope(reqId);
+    sendJson(res, 200, { ok: true, id: env.id, rev: env.rev, updatedAt: env.updatedAt });
     return;
   }
 
   if (!checkAuth(req, res)) return;
 
+  if (pathname === '/api/libraries' && req.method === 'GET') {
+    try {
+      sendJson(res, 200, { libraries: listLibraries() });
+    } catch (err) {
+      sendJson(res, 500, { error: err.message || 'Failed to list libraries' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/libraries' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const nextState = body && body.state;
+      if (!nextState || typeof nextState.title !== 'string' || !Array.isArray(nextState.halls)) {
+        sendJson(res, 400, { error: 'Invalid library state payload' });
+        return;
+      }
+      const baseSlug = sanitizeLibId(body.id || nextState.title || 'library');
+      let libId = baseSlug;
+      let suffix = 2;
+      while (fs.existsSync(getLibraryFile(libId))) {
+        libId = sanitizeLibId(`${baseSlug}-${suffix++}`);
+      }
+      const updated = {
+        rev: 1,
+        updatedAt: new Date().toISOString(),
+        state: nextState
+      };
+      writeEnvelopeAtomic(libId, updated);
+      sendJson(res, 201, {
+        ok: true,
+        id: libId,
+        rev: updated.rev,
+        updatedAt: updated.updatedAt,
+        library: {
+          id: libId,
+          title: nextState.title || 'Untitled Library',
+          subtitle: nextState.subtitle || '',
+          rev: updated.rev,
+          updatedAt: updated.updatedAt,
+          hallCount: nextState.halls.length,
+          bookCount: countBooksInHalls(nextState.halls)
+        }
+      });
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Create failed' });
+    }
+    return;
+  }
+
+  if (pathname.startsWith('/api/libraries/') && req.method === 'DELETE') {
+    try {
+      const rawId = decodeURIComponent(pathname.slice('/api/libraries/'.length));
+      const libId = sanitizeLibId(rawId);
+      const filePath = getLibraryFile(libId);
+      if (!fs.existsSync(filePath)) {
+        sendJson(res, 404, { error: 'Library not found' });
+        return;
+      }
+      const prev = parseEnvelopeFile(filePath);
+      maybeWriteRollingBackup(libId, prev, true);
+      fs.unlinkSync(filePath);
+      sendJson(res, 200, { ok: true, id: libId, libraries: listLibraries() });
+    } catch (err) {
+      sendJson(res, 500, { error: err.message || 'Delete failed' });
+    }
+    return;
+  }
+
   if (pathname === '/api/state' && req.method === 'GET') {
-    const env = readEnvelope();
+    const reqId = url.searchParams.get('id') || '';
+    const env = readEnvelope(reqId);
     sendJson(res, 200, env);
     return;
   }
@@ -195,26 +342,28 @@ const server = http.createServer(async (req, res) => {
         sendJson(res, 400, { error: 'Invalid library state payload' });
         return;
       }
-      const current = readEnvelope();
+      const libId = resolveLibraryId(url.searchParams.get('id') || body.id || '');
+      const current = readEnvelope(libId);
       const baseRev = typeof body.baseRev === 'number' ? body.baseRev : null;
       const force = Boolean(body.force);
       if (!force && baseRev !== null && current.rev > 0 && baseRev !== current.rev) {
         sendJson(res, 409, {
           error: 'conflict',
+          id: libId,
           rev: current.rev,
           updatedAt: current.updatedAt,
           state: current.state
         });
         return;
       }
-      maybeWriteRollingBackup(current);
+      maybeWriteRollingBackup(libId, current, false);
       const updated = {
         rev: current.rev + 1,
         updatedAt: new Date().toISOString(),
         state: nextState
       };
-      writeEnvelopeAtomic(updated);
-      sendJson(res, 200, { ok: true, rev: updated.rev, updatedAt: updated.updatedAt });
+      writeEnvelopeAtomic(libId, updated);
+      sendJson(res, 200, { ok: true, id: libId, rev: updated.rev, updatedAt: updated.updatedAt });
     } catch (err) {
       sendJson(res, err.statusCode || 500, { error: err.message || 'Save failed' });
     }

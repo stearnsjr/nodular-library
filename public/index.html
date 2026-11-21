@@ -148,32 +148,13 @@
         </button>
       </div>
 
-      <!-- Templates Menu -->
+      <!-- Libraries Switcher & New Library Menu -->
       <div class="relative">
-        <button id="btn-templates" title="Starter libraries & blank map" class="storybook-btn rounded-xl px-2.5 py-1.5 text-xs font-medium flex items-center gap-1 cursor-pointer">
+        <button id="btn-templates" title="Switch, create, or delete libraries" class="storybook-btn rounded-xl px-2.5 py-1.5 text-xs font-medium flex items-center gap-1 cursor-pointer">
           <span>Libraries</span>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
         </button>
-        <div id="menu-templates" class="hidden absolute right-0 top-full mt-2 w-64 storybook-panel rounded-2xl p-1.5 z-40">
-          <div class="px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider" style="color: var(--ui-muted);">Switch Library</div>
-          <button data-template="creative" class="template-opt w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-ink);">
-            <span class="font-semibold">Creative Project Atlas</span>
-            <span class="text-[11px]" style="color: var(--ui-muted);">Halls, Sub-Halls, Study Table &amp; Pile</span>
-          </button>
-          <button data-template="worldbuilding" class="template-opt w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-ink);">
-            <span class="font-semibold">Story &amp; Worldbuilding</span>
-            <span class="text-[11px]" style="color: var(--ui-muted);">Realms, Factions, Heroes &amp; Ribbons</span>
-          </button>
-          <button data-template="study" class="template-opt w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-ink);">
-            <span class="font-semibold">Knowledge Garden</span>
-            <span class="text-[11px]" style="color: var(--ui-muted);">4 Halls · Notes, Sources, Stamps</span>
-          </button>
-          <div class="my-1 border-t" style="border-color: var(--ui-border);"></div>
-          <button data-template="blank" class="template-opt w-full text-left px-2.5 py-2 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-accent);">
-            <span class="font-semibold">+ Blank Library</span>
-            <span class="text-[11px]" style="color: var(--ui-muted);">Fresh rotunda &amp; 1 starter hall</span>
-          </button>
-        </div>
+        <div id="menu-templates" class="hidden absolute right-0 top-full mt-2 w-72 sm:w-80 max-h-[70vh] overflow-y-auto nice-scroll storybook-panel rounded-2xl p-2 z-40"></div>
       </div>
 
       <!-- Export / Import -->

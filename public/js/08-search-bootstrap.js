@@ -503,11 +503,121 @@ btnTasksMenu?.addEventListener('click', (e) => {
     menuTasks.classList.remove('hidden');
   }
 });
+function renderLibrariesMenu() {
+  if (!menuTemplates) return;
+  const libs = savedLibraries.length > 0
+    ? savedLibraries
+    : [{ id: activeLibraryId, title: state.title || 'My Library', hallCount: (state.halls || []).length, bookCount: 0 }];
+
+  menuTemplates.innerHTML = `
+    <div class="px-2 py-1 flex items-center justify-between gap-2">
+      <span class="text-[11px] font-bold uppercase tracking-wider" style="color: var(--ui-muted);">Your Libraries (${libs.length})</span>
+    </div>
+    <div class="space-y-1 mb-2">
+      ${libs.map(lib => {
+        const isActive = lib.id === activeLibraryId;
+        return `
+          <div class="flex items-center gap-1 rounded-xl p-1 transition-colors"
+               style="background:${isActive ? 'var(--ui-accent-soft)' : 'transparent'}; border:1.4px solid ${isActive ? 'var(--ui-accent)' : 'transparent'};">
+            <button type="button" data-switch-lib="${esc(lib.id)}"
+                    class="flex-1 min-w-0 text-left px-2 py-1.5 rounded-lg text-xs cursor-pointer bg-transparent border-0 flex flex-col"
+                    style="color: var(--ui-ink);">
+              <span class="font-storybook font-bold truncate flex items-center gap-1.5">
+                ${isActive ? `<span style="color: var(--ui-accent);">&#10003;</span>` : ''}
+                <span class="truncate">${esc(lib.title || 'Untitled Library')}</span>
+              </span>
+              <span class="text-[10.5px] truncate" style="color: var(--ui-muted);">
+                ${lib.hallCount ?? 0} hall${lib.hallCount === 1 ? '' : 's'} &middot; ${lib.bookCount ?? 0} item${lib.bookCount === 1 ? '' : 's'}
+              </span>
+            </button>
+            <button type="button" data-del-lib="${esc(lib.id)}" title="Delete library '${esc(lib.title)}'"
+                    class="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold cursor-pointer bg-transparent border border-red-400/40 text-red-600 hover:bg-red-500/10">&times;</button>
+          </div>
+        `;
+      }).join('')}
+    </div>
+
+    <div class="my-2 border-t" style="border-color: var(--ui-border);"></div>
+    <div class="px-2 py-1 text-[11px] font-bold uppercase tracking-wider" style="color: var(--ui-muted);">Create New Library</div>
+    <div class="px-1.5 pb-1.5 flex items-center gap-1.5">
+      <input id="new-lib-name" type="text" placeholder="New library name…"
+             class="storybook-input flex-1 min-w-0 rounded-xl px-2.5 py-1.5 text-xs" />
+      <button id="btn-create-blank-lib" type="button"
+              class="storybook-btn-primary rounded-xl px-2.5 py-1.5 text-xs font-bold cursor-pointer shrink-0">+ New</button>
+    </div>
+
+    <div class="px-2 pt-1 pb-0.5 text-[10.5px] font-semibold uppercase tracking-wider" style="color: var(--ui-muted);">Or New From Template</div>
+    <div class="space-y-0.5">
+      <button type="button" data-new-template="creative" class="w-full text-left px-2.5 py-1.5 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-ink);">
+        <span class="font-semibold">+ Creative Project Atlas</span>
+        <span class="text-[10.5px]" style="color: var(--ui-muted);">Halls, Sub-Halls, Study Table &amp; Pile</span>
+      </button>
+      <button type="button" data-new-template="worldbuilding" class="w-full text-left px-2.5 py-1.5 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-ink);">
+        <span class="font-semibold">+ Story &amp; Worldbuilding</span>
+        <span class="text-[10.5px]" style="color: var(--ui-muted);">Realms, Factions, Heroes &amp; Ribbons</span>
+      </button>
+      <button type="button" data-new-template="study" class="w-full text-left px-2.5 py-1.5 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-ink);">
+        <span class="font-semibold">+ Knowledge Garden</span>
+        <span class="text-[10.5px]" style="color: var(--ui-muted);">4 Halls &middot; Notes, Sources, Stamps</span>
+      </button>
+    </div>
+  `;
+
+  menuTemplates.querySelectorAll('[data-switch-lib]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.switchLib;
+      closeAllMenus();
+      if (id && id !== activeLibraryId) {
+        await switchToLibrary(id);
+      }
+    });
+  });
+
+  menuTemplates.querySelectorAll('[data-del-lib]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await deleteSavedLibrary(btn.dataset.delLib);
+    });
+  });
+
+  const nameInput = menuTemplates.querySelector('#new-lib-name');
+  const submitNewBlank = async () => {
+    const title = (nameInput?.value || '').trim() || 'Untitled Library';
+    closeAllMenus();
+    await createNewLibrary('blank', title);
+  };
+  menuTemplates.querySelector('#btn-create-blank-lib')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    submitNewBlank();
+  });
+  nameInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submitNewBlank();
+    }
+  });
+
+  menuTemplates.querySelectorAll('[data-new-template]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const key = btn.dataset.newTemplate;
+      const customName = (nameInput?.value || '').trim() || null;
+      closeAllMenus();
+      await createNewLibrary(key, customName);
+    });
+  });
+}
+
 document.getElementById('btn-templates').addEventListener('click', (e) => {
   e.stopPropagation();
   const wasOpen = !menuTemplates.classList.contains('hidden');
   closeAllMenus();
-  if (!wasOpen) menuTemplates.classList.remove('hidden');
+  if (!wasOpen) {
+    renderLibrariesMenu();
+    menuTemplates.classList.remove('hidden');
+    refreshLibraryList();
+  }
 });
 document.getElementById('btn-io').addEventListener('click', (e) => {
   e.stopPropagation();
@@ -523,17 +633,6 @@ window.addEventListener('click', (e) => {
       !e.target.closest('#btn-clear-search') && !e.target.closest('#search-hopper')) {
     closeAllMenus();
   }
-});
-
-document.querySelectorAll('.template-opt').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const key = btn.dataset.template;
-    if (!TEMPLATES[key]) return;
-    state = normalizeLibraryState(deepClone(TEMPLATES[key]));
-    activeStampLensId = null;
-    clearSearch(false); closeOpenBook(); clearSelection(); commitChange(); closeAllMenus(); fitToView(true);
-    showToast(`Opened "${state.title}"`);
-  });
 });
 
 document.getElementById('act-export-md').addEventListener('click', () => {
