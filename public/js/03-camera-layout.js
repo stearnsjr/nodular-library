@@ -21,18 +21,20 @@ function screenToWorld(clientX, clientY) {
 }
 
 let cameraRafId = null;
+let gestureBaseCam = null;
 
 function applyCamera() {
   if (cameraRafId !== null) {
     cancelAnimationFrame(cameraRafId);
     cameraRafId = null;
   }
-  const rect = canvasWrap.getBoundingClientRect();
-  if (rect.width > 0 && rect.height > 0) {
-    const vw = rect.width / cam.scale;
-    const vh = rect.height / cam.scale;
-    const vx = -(rect.width / 2 + cam.x) / cam.scale;
-    const vy = -(rect.height / 2 + cam.y) / cam.scale;
+  svgEl.style.transform = '';
+  const svgRect = svgEl.getBoundingClientRect();
+  if (svgRect.width > 0 && svgRect.height > 0) {
+    const vw = svgRect.width / cam.scale;
+    const vh = svgRect.height / cam.scale;
+    const vx = -(svgRect.width / 2 + cam.x) / cam.scale;
+    const vy = -(svgRect.height / 2 + cam.y) / cam.scale;
     svgEl.setAttribute('viewBox', `${vx.toFixed(2)} ${vy.toFixed(2)} ${vw.toFixed(2)} ${vh.toFixed(2)}`);
   }
   document.getElementById('zoom-readout').textContent = `${Math.round(cam.scale * 100)}%`;
@@ -41,16 +43,50 @@ function applyCamera() {
   }
 }
 
-function scheduleApplyCamera() {
+function startGesturePreview() {
+  if (!gestureBaseCam) {
+    gestureBaseCam = { x: cam.x, y: cam.y, scale: cam.scale };
+  }
+}
+
+function applyGesturePreviewTransform() {
+  if (!gestureBaseCam) {
+    applyCamera();
+    return;
+  }
+  const ds = cam.scale / gestureBaseCam.scale;
+  const dx = cam.x - ds * gestureBaseCam.x;
+  const dy = cam.y - ds * gestureBaseCam.y;
+  const wrapRect = canvasWrap.getBoundingClientRect();
+  // If user pans beyond the overscan buffer in a single continuous swipe, rebase once
+  if (Math.abs(dx) > wrapRect.width * 0.22 || Math.abs(dy) > wrapRect.height * 0.22) {
+    gestureBaseCam = { x: cam.x, y: cam.y, scale: cam.scale };
+    applyCamera();
+    return;
+  }
+  svgEl.style.transform = `translate3d(${dx.toFixed(2)}px, ${dy.toFixed(2)}px, 0) scale(${ds.toFixed(4)})`;
+  document.getElementById('zoom-readout').textContent = `${Math.round(cam.scale * 100)}%`;
+}
+
+function commitGestureTransform() {
+  if (gestureBaseCam) {
+    gestureBaseCam = null;
+    applyCamera();
+  }
+}
+
+function scheduleApplyCamera(useGesturePreview = false) {
   if (cameraRafId !== null) return;
   cameraRafId = requestAnimationFrame(() => {
     cameraRafId = null;
-    applyCamera();
+    if (useGesturePreview && gestureBaseCam) applyGesturePreviewTransform();
+    else applyCamera();
   });
 }
 
 function flyTo(worldX, worldY, targetScale = null, duration = 420) {
   if (camAnim) cancelAnimationFrame(camAnim);
+  gestureBaseCam = null;
   const startX = cam.x, startY = cam.y, startS = cam.scale;
   const endS = targetScale !== null ? Math.max(0.22, Math.min(2.2, targetScale)) : cam.scale;
   const endX = -worldX * endS;
@@ -81,7 +117,7 @@ function fitToView(animate = true) {
   const cy = (worldBounds.minY + worldBounds.maxY) / 2;
   const targetScale = Math.max(0.24, Math.min(1.0, Math.min((rect.width - padX) / bw, (rect.height - padY) / bh)));
   if (animate) flyTo(cx, cy, targetScale, 460);
-  else { cam.scale = targetScale; cam.x = -cx * targetScale; cam.y = -cy * targetScale; applyCamera(); }
+  else { gestureBaseCam = null; cam.scale = targetScale; cam.x = -cx * targetScale; cam.y = -cy * targetScale; applyCamera(); }
 }
 
 let pointerMode = 'idle';
@@ -109,6 +145,7 @@ function beginPinchGesture() {
   angleDrag = null;
   bookDrag = null;
   paperDrag = null;
+  startGesturePreview();
   const [p1, p2] = pts;
   const dist = Math.max(10, Math.hypot(p2.x - p1.x, p2.y - p1.y));
   pinchStart = {
@@ -403,7 +440,7 @@ window.addEventListener('pointermove', (e) => {
       cam.scale = newScale;
       cam.x = curRelX - (startRelX - pinchStart.camX) * ratio;
       cam.y = curRelY - (startRelY - pinchStart.camY) * ratio;
-      scheduleApplyCamera();
+      scheduleApplyCamera(true);
     }
     return;
   }
@@ -418,8 +455,15 @@ window.addEventListener('pointermove', (e) => {
   const bookThreshold = isTouch ? 18 : 7;
 
   if (pointerMode === 'pan') {
-    if (Math.hypot(dx, dy) > panThreshold) dragMoved = true;
-    if (dragMoved) { cam.x = dragStart.camX + dx; cam.y = dragStart.camY + dy; scheduleApplyCamera(); }
+    if (Math.hypot(dx, dy) > panThreshold) {
+      if (!dragMoved && isTouch) startGesturePreview();
+      dragMoved = true;
+    }
+    if (dragMoved) {
+      cam.x = dragStart.camX + dx;
+      cam.y = dragStart.camY + dy;
+      scheduleApplyCamera(isTouch);
+    }
     return;
   }
 
@@ -516,6 +560,7 @@ window.addEventListener('pointerup', (e) => {
       primaryPointerId = null;
       pointerMode = 'idle';
       canvasWrap.classList.remove('dragging', 'pinching');
+      commitGestureTransform();
       suppressNextClick = true;
       setTimeout(() => { suppressNextClick = false; }, 80);
     }
@@ -584,6 +629,7 @@ window.addEventListener('pointerup', (e) => {
   if (pointerMode === 'maybe-drag-book') { bookDrag = null; pointerMode = 'idle'; return; }
   if (pointerMode === 'pan') {
     canvasWrap.classList.remove('dragging');
+    commitGestureTransform();
     if (dragMoved) { suppressNextClick = true; setTimeout(() => { suppressNextClick = false; }, 60); }
     pointerMode = 'idle';
   }
@@ -596,6 +642,7 @@ window.addEventListener('pointercancel', (e) => {
   dragOverlayEl.innerHTML = '';
   clearCornerDropHighlights();
   canvasWrap.classList.remove('dragging', 'pinching', 'dragging-angle', 'dragging-book');
+  commitGestureTransform();
   angleDrag = null;
   bookDrag = null;
   paperDrag = null;

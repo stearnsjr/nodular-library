@@ -1256,6 +1256,22 @@ body.lib-candlelight .oak-tabletop-plank {
     transition: none !important;
     transform-box: initial !important;
   }
+  /* GPU-composited overscan SVG layer on mobile/touch so pan & pinch use pure CSS translate3d/scale with zero SVG re-rasterization flicker */
+  #canvas-wrap {
+    isolation: isolate;
+  }
+  #library-svg {
+    position: absolute;
+    left: -25%;
+    top: -25%;
+    width: 150% !important;
+    height: 150% !important;
+    transform-origin: 50% 50%;
+    will-change: transform;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+
   .mote,
   .lantern-halo,
   .library-cat-body,
