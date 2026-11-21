@@ -504,6 +504,21 @@ btnTasksMenu?.addEventListener('click', (e) => {
   }
 });
 let showBackupsInMenu = false;
+const HIDDEN_LIB_TPLS_KEY = 'storytellers_hidden_lib_templates_v1';
+const STARTER_LIB_TEMPLATES = [
+  { key: 'creative', title: 'Creative Project Atlas', sub: 'Halls, Sub-Halls, Study Table & Pile' },
+  { key: 'worldbuilding', title: 'Story & Worldbuilding', sub: 'Realms, Factions, Heroes & Ribbons' },
+  { key: 'study', title: 'Knowledge Garden', sub: '4 Halls · Notes, Sources, Stamps' }
+];
+let hiddenLibTemplates = [];
+try {
+  const saved = JSON.parse(localStorage.getItem(HIDDEN_LIB_TPLS_KEY) || '[]');
+  if (Array.isArray(saved)) hiddenLibTemplates = saved;
+} catch (e) {}
+
+function saveHiddenLibTemplates() {
+  try { localStorage.setItem(HIDDEN_LIB_TPLS_KEY, JSON.stringify(hiddenLibTemplates)); } catch (e) {}
+}
 
 function formatBackupTime(iso) {
   if (!iso) return '';
@@ -522,6 +537,8 @@ function renderLibrariesMenu() {
   const libs = savedLibraries.length > 0
     ? savedLibraries
     : [{ id: activeLibraryId, title: state.title || 'My Library', hallCount: (state.halls || []).length, bookCount: 0 }];
+  const visibleTemplates = STARTER_LIB_TEMPLATES.filter(t => !hiddenLibTemplates.includes(t.key));
+  const hiddenCount = STARTER_LIB_TEMPLATES.length - visibleTemplates.length;
 
   menuTemplates.innerHTML = `
     <div class="px-2 py-1 flex items-center justify-between gap-2">
@@ -560,21 +577,29 @@ function renderLibrariesMenu() {
               class="storybook-btn-primary rounded-xl px-2.5 py-1.5 text-xs font-bold cursor-pointer shrink-0">+ New</button>
     </div>
 
-    <div class="px-2 pt-1 pb-0.5 text-[10.5px] font-semibold uppercase tracking-wider" style="color: var(--ui-muted);">Or New From Template</div>
-    <div class="space-y-0.5">
-      <button type="button" data-new-template="creative" class="w-full text-left px-2.5 py-1.5 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-ink);">
-        <span class="font-semibold">+ Creative Project Atlas</span>
-        <span class="text-[10.5px]" style="color: var(--ui-muted);">Halls, Sub-Halls, Study Table &amp; Pile</span>
-      </button>
-      <button type="button" data-new-template="worldbuilding" class="w-full text-left px-2.5 py-1.5 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-ink);">
-        <span class="font-semibold">+ Story &amp; Worldbuilding</span>
-        <span class="text-[10.5px]" style="color: var(--ui-muted);">Realms, Factions, Heroes &amp; Ribbons</span>
-      </button>
-      <button type="button" data-new-template="study" class="w-full text-left px-2.5 py-1.5 rounded-xl text-xs hover:bg-black/5 flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-ink);">
-        <span class="font-semibold">+ Knowledge Garden</span>
-        <span class="text-[10.5px]" style="color: var(--ui-muted);">4 Halls &middot; Notes, Sources, Stamps</span>
-      </button>
-    </div>
+    ${visibleTemplates.length > 0 ? `
+      <div class="px-2 pt-1 pb-0.5 flex items-center justify-between gap-2">
+        <span class="text-[10.5px] font-semibold uppercase tracking-wider" style="color: var(--ui-muted);">Or New From Template</span>
+        <button id="btn-hide-all-tpls" type="button" class="text-[10px] font-semibold underline cursor-pointer bg-transparent border-0 p-0" style="color: var(--ui-muted);">Remove All</button>
+      </div>
+      <div class="space-y-0.5">
+        ${visibleTemplates.map(tpl => `
+          <div class="flex items-center gap-1 rounded-xl hover:bg-black/5 pr-1">
+            <button type="button" data-new-template="${tpl.key}" class="flex-1 min-w-0 text-left px-2.5 py-1.5 rounded-xl text-xs flex flex-col cursor-pointer bg-transparent border-0" style="color: var(--ui-ink);">
+              <span class="font-semibold truncate">+ ${esc(tpl.title)}</span>
+              <span class="text-[10.5px] truncate" style="color: var(--ui-muted);">${esc(tpl.sub)}</span>
+            </button>
+            <button type="button" data-hide-template="${tpl.key}" title="Remove '${esc(tpl.title)}' template from menu"
+                    class="shrink-0 w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold cursor-pointer bg-transparent border-0 opacity-60 hover:opacity-100 hover:bg-red-500/10 text-red-600">&times;</button>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+    ${hiddenCount > 0 ? `
+      <div class="px-2 pt-1 flex justify-end">
+        <button id="btn-restore-lib-tpls" type="button" class="text-[10.5px] font-semibold underline cursor-pointer bg-transparent border-0 p-0" style="color: var(--ui-muted);">Restore starter templates (${hiddenCount})</button>
+      </div>
+    ` : ''}
 
     <div class="my-2 border-t" style="border-color: var(--ui-border);"></div>
     <button id="btn-toggle-backups-menu" type="button"
@@ -655,6 +680,32 @@ function renderLibrariesMenu() {
       closeAllMenus();
       await createNewLibrary(key, customName);
     });
+  });
+
+  menuTemplates.querySelectorAll('[data-hide-template]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const key = btn.dataset.hideTemplate;
+      if (!hiddenLibTemplates.includes(key)) {
+        hiddenLibTemplates.push(key);
+        saveHiddenLibTemplates();
+        renderLibrariesMenu();
+      }
+    });
+  });
+
+  menuTemplates.querySelector('#btn-hide-all-tpls')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    hiddenLibTemplates = STARTER_LIB_TEMPLATES.map(t => t.key);
+    saveHiddenLibTemplates();
+    renderLibrariesMenu();
+  });
+
+  menuTemplates.querySelector('#btn-restore-lib-tpls')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    hiddenLibTemplates = [];
+    saveHiddenLibTemplates();
+    renderLibrariesMenu();
   });
 
   menuTemplates.querySelector('#btn-toggle-backups-menu')?.addEventListener('click', (e) => {
