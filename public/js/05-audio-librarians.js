@@ -580,13 +580,21 @@ function renderMap() {
 
   const ribbonsLayer = renderCrossRefRibbonsSVG(ink, glow);
 
-  sceneEl.innerHTML = `
+  let sceneMarkup = `
     <g id="layer-halls">${hallFloors}</g>
     <g id="layer-rotunda">${renderRotundaSVG(ink, woodPattern, wallColor, wallHighlight)}</g>
     <g id="layer-banners">${hallBanners}</g>
     <g id="layer-shelves">${shelvesLayer}</g>
     <g id="layer-ribbons">${ribbonsLayer}</g>
   `;
+  const isTouchLite = window.innerWidth <= 768 || window.matchMedia('(pointer: coarse)').matches;
+  if (isTouchLite) {
+    sceneMarkup = sceneMarkup
+      .replace(/\sfilter="url\(#(?:bookShadow|shelfShadow)\)"/g, '')
+      .replace(/url\(#woodGrainDay\)/g, '#d6a367')
+      .replace(/url\(#woodGrainNight\)/g, '#5a3b26');
+  }
+  sceneEl.innerHTML = sceneMarkup;
   renderLibrariansOverlaySVG();
 
   const rCount = state.ribbons.length;

@@ -28,9 +28,13 @@ function applyCamera() {
     cameraRafId = null;
   }
   const rect = canvasWrap.getBoundingClientRect();
-  const tx = rect.width / 2 + cam.x;
-  const ty = rect.height / 2 + cam.y;
-  worldEl.setAttribute('transform', `translate(${tx.toFixed(2)}, ${ty.toFixed(2)}) scale(${cam.scale.toFixed(4)})`);
+  if (rect.width > 0 && rect.height > 0) {
+    const vw = rect.width / cam.scale;
+    const vh = rect.height / cam.scale;
+    const vx = -(rect.width / 2 + cam.x) / cam.scale;
+    const vy = -(rect.height / 2 + cam.y) / cam.scale;
+    svgEl.setAttribute('viewBox', `${vx.toFixed(2)} ${vy.toFixed(2)} ${vw.toFixed(2)} ${vh.toFixed(2)}`);
+  }
   document.getElementById('zoom-readout').textContent = `${Math.round(cam.scale * 100)}%`;
   if (typeof minimapCollapsed === 'undefined' || !minimapCollapsed) {
     updateMinimapViewport();
@@ -322,9 +326,10 @@ function renderCanvasPaperDragOverlay(wx, wy) {
     `;
   }
 
+  const dragFilter = (window.innerWidth <= 768 || window.matchMedia('(pointer: coarse)').matches) ? '' : 'filter="url(#shelfShadow)"';
   dragOverlayEl.innerHTML = `
     ${targetSvg}
-    <g transform="translate(${wx.toFixed(1)}, ${wy.toFixed(1)}) rotate(-5)" opacity="0.95" filter="url(#shelfShadow)">
+    <g transform="translate(${wx.toFixed(1)}, ${wy.toFixed(1)}) rotate(-5)" opacity="0.95" ${dragFilter}>
       <rect x="-46" y="-18" width="92" height="36" rx="5" fill="#fffdf6" stroke="#5a3b22" stroke-width="2.2" />
       <line x1="-36" y1="-6" x2="32" y2="-6" stroke="#c5ad8c" stroke-width="1.4" />
       <line x1="-36" y1="6" x2="22" y2="6" stroke="#c5ad8c" stroke-width="1.4" />
@@ -365,9 +370,10 @@ function renderCanvasBookDragOverlay(wx, wy) {
 
   const gw = metrics.w, gh = Math.min(120, metrics.h);
   const hw = gw / 2, hh = gh / 2;
+  const dragFilter = (window.innerWidth <= 768 || window.matchMedia('(pointer: coarse)').matches) ? '' : 'filter="url(#shelfShadow)"';
   dragOverlayEl.innerHTML = `
     ${targetSvg}
-    <g transform="translate(${wx.toFixed(1)}, ${wy.toFixed(1)}) rotate(-7)" opacity="0.94" filter="url(#shelfShadow)">
+    <g transform="translate(${wx.toFixed(1)}, ${wy.toFixed(1)}) rotate(-7)" opacity="0.94" ${dragFilter}>
       <rect x="${-hw}" y="${-hh}" width="${gw}" height="${gh}" rx="6" fill="${bsw.fill}" stroke="#f5c663" stroke-width="2.6" />
       <text x="0" y="0" transform="rotate(-90)" text-anchor="middle" dominant-baseline="central"
             font-size="10" font-weight="700" font-family="Georgia, serif" fill="#fffaf2"

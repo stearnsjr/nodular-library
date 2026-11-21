@@ -1257,7 +1257,11 @@ body.lib-candlelight .oak-tabletop-plank {
     transform-box: initial !important;
   }
   .mote,
-  .lantern-halo {
+  .lantern-halo,
+  .library-cat-body,
+  .library-cat-tail,
+  .library-cat-z1,
+  .library-cat-z2 {
     animation: none !important;
   }
 }
