@@ -29,3 +29,10 @@ environment:
 ```bash
 node server.js
 ```
+
+## Kroger Shopping List Integration (Optional)
+1. Register a free developer app at [developer.kroger.com](https://developer.kroger.com/).
+2. Set your app's **Redirect URI** to `http://<your-host>:3000/api/kroger/auth/callback`.
+3. Either add `KROGER_CLIENT_ID` and `KROGER_CLIENT_SECRET` to `docker-compose.yml`, **or** enter them directly inside the **Market -> Kroger Settings** panel in the web UI (saved in `./data/kroger-config.json`).
+4. Pick your local Kroger family store by ZIP code, search items or paste Kroger product URLs, and optionally connect your Kroger account via OAuth to send shopping list items straight to your Kroger Cart.
+

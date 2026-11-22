@@ -491,6 +491,7 @@ function closeAllMenus() {
   menuTemplates.classList.add('hidden');
   menuIO.classList.add('hidden');
   menuTasks?.classList.add('hidden');
+  document.getElementById('menu-market')?.classList.add('hidden');
   searchResults.classList.add('hidden');
 }
 
@@ -753,6 +754,7 @@ window.addEventListener('click', (e) => {
   if (!e.target.closest('#menu-templates') && !e.target.closest('#btn-templates') &&
       !e.target.closest('#menu-io') && !e.target.closest('#btn-io') &&
       !e.target.closest('#menu-tasks') && !e.target.closest('#btn-tasks-menu') &&
+      !e.target.closest('#menu-market') && !e.target.closest('#btn-market-menu') &&
       !e.target.closest('#search-results') && !e.target.closest('#search-input') &&
       !e.target.closest('#btn-clear-search') && !e.target.closest('#search-hopper')) {
     closeAllMenus();

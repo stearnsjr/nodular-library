@@ -204,7 +204,8 @@ function renderBookshelfBaySVG(bayGeom, ink, wallColor, wallHighlight, glow) {
     }).join('');
 
     const isCharBook = isCharacterBook(book);
-    const tipText = `${isScroll ? 'Scroll · ' : (isCharBook ? 'D&D Character · ' : '')}${truncate(book.title, 28)}${book.pinned ? ' ★ Study Table' : ''} · Click to ${isScroll ? 'unroll' : 'open'}, drag to move`;
+    const isMktBook = isMarketLedger(book);
+    const tipText = `${isScroll ? 'Scroll · ' : (isCharBook ? 'D&D Character · ' : (isMktBook ? 'Market Ledger · ' : ''))}${truncate(book.title, 28)}${book.pinned ? ' ★ Study Table' : ''} · Click to ${isScroll ? 'unroll' : 'open'}, drag to move`;
     const tipW = Math.max(146, tipText.length * 5.6 + 20);
     const inTransit = isBookCarriedByLibrarian(book.id);
 

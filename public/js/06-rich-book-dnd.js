@@ -1501,6 +1501,13 @@ function renderOpenBook(animateTurn = false) {
   renderBookTopFlippers(container);
   renderReferencePeekDrawer();
 
+  if (!isLoosePaper && isMarketLedger(book) && typeof renderMarketLedgerOpenBook === 'function') {
+    bookSpreadWrap.classList.remove('is-single-page-mode', 'is-corkboard-mode');
+    document.getElementById('btn-close-book-label').textContent = 'Close Ledger';
+    renderMarketLedgerOpenBook(container, sw);
+    return;
+  }
+
   const orderedPages = getOrderedBookPages(book);
   const activeIdx = orderedPages.findIndex(p => p.id === openBookState.pageId);
   const activePage = activeIdx >= 0 ? orderedPages[activeIdx] : null;

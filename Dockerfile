@@ -2,7 +2,7 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-COPY package.json server.js ./
+COPY package.json server.js kroger.js ./
 COPY public ./public
 
 RUN mkdir -p /data/backups && chown -R node:node /app /data

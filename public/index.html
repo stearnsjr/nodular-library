@@ -120,6 +120,19 @@
         <div id="menu-tasks" class="hidden absolute right-0 top-full mt-2 w-80 sm:w-96 max-h-[420px] flex flex-col storybook-panel rounded-2xl p-2.5 z-40 shadow-2xl"></div>
       </div>
 
+      <!-- Global Market / Shopping List Quick Drawer (Desktop Popover & Mobile Sheet) -->
+      <div class="relative">
+        <button id="btn-market-menu" title="Open Shopping List &amp; Kroger Quick Drawer" class="storybook-btn rounded-xl px-2.5 py-1.5 text-xs font-medium flex items-center gap-1.5 cursor-pointer">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" style="color: #4f7c54;">
+            <circle cx="9" cy="20" r="1.6"/><circle cx="18" cy="20" r="1.6"/>
+            <path d="M2 3h3l2.5 11.8a2 2 0 0 0 2 1.6h8.5a2 2 0 0 0 2-1.6L22 7H6"/>
+          </svg>
+          <span class="hidden md:inline">Market</span>
+          <span id="market-menu-badge" class="text-[10.5px] font-mono font-bold px-1.5 py-0.2 rounded-full" style="background: rgba(79, 124, 84, 0.18); color: #3c6b41;">0</span>
+        </button>
+        <div id="menu-market" class="hidden market-popover-sheet absolute right-0 top-full mt-2 w-80 sm:w-[400px] max-h-[76vh] flex flex-col storybook-panel rounded-2xl p-3 z-40 shadow-2xl"></div>
+      </div>
+
       <!-- Search + Match Hopper -->
       <div class="relative flex items-center gap-1">
         <div class="relative">
@@ -379,16 +392,22 @@
     </div>
   </div>
 
+  <!-- Kroger API & Store Settings Modal -->
+  <div id="kroger-settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5" style="background: rgba(24, 14, 8, 0.58); backdrop-filter: blur(5px);">
+    <div id="kroger-settings-card" class="storybook-panel rounded-3xl w-full max-w-[540px] max-h-[88vh] flex flex-col overflow-hidden shadow-2xl"></div>
+  </div>
+
   <div id="toast" class="hide-toast fixed bottom-4 left-1/2 -translate-x-1/2 z-50 storybook-panel rounded-full px-4 py-2 text-xs font-semibold shadow-lg" style="color: var(--ui-ink);"></div>
 
-  <script defer src="/js/01-constants-dnd.js?v=20261120c"></script>
-  <script defer src="/js/02-state-sync.js?v=20261121a"></script>
-  <script defer src="/js/03-camera-layout.js?v=20261121a"></script>
-  <script defer src="/js/04-map-svg.js?v=20261121a"></script>
-  <script defer src="/js/05-audio-librarians.js?v=20261121a"></script>
-  <script defer src="/js/06-rich-book-dnd.js?v=20261120h"></script>
-  <script defer src="/js/07-inspector-crud.js?v=20261121a"></script>
-  <script defer src="/js/08-search-bootstrap.js?v=20261121a"></script>
+  <script defer src="/js/01-constants-dnd.js?v=20261121b"></script>
+  <script defer src="/js/02-state-sync.js?v=20261121b"></script>
+  <script defer src="/js/03-camera-layout.js?v=20261121b"></script>
+  <script defer src="/js/04-map-svg.js?v=20261121b"></script>
+  <script defer src="/js/05-audio-librarians.js?v=20261121b"></script>
+  <script defer src="/js/06-rich-book-dnd.js?v=20261121b"></script>
+  <script defer src="/js/07-inspector-crud.js?v=20261121b"></script>
+  <script defer src="/js/08-search-bootstrap.js?v=20261121b"></script>
+  <script defer src="/js/09-market-kroger.js?v=20261121b"></script>
   <script>
     if ('serviceWorker' in navigator && /^https?:$/i.test(window.location.protocol)) {
       window.addEventListener('load', () => {

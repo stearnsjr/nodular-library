@@ -160,6 +160,69 @@ function isScrollItem(item) {
 function isCharacterBook(item) {
   return Boolean(item && item.dndChar && typeof item.dndChar === 'object');
 }
+function isMarketLedger(item) {
+  return Boolean(item && item.marketLedger && typeof item.marketLedger === 'object');
+}
+
+function createDefaultMarketLedgerData(initialListName = 'Weekly Groceries') {
+  const listId = uid('ml');
+  return {
+    activeListId: listId,
+    groupBy: 'aisle',
+    modality: 'PICKUP',
+    lists: [
+      {
+        id: listId,
+        name: initialListName,
+        color: 'sage',
+        items: []
+      }
+    ]
+  };
+}
+
+function normalizeMarketLedger(raw) {
+  const base = createDefaultMarketLedgerData();
+  if (!raw || typeof raw !== 'object') return base;
+  const lists = Array.isArray(raw.lists) && raw.lists.length > 0
+    ? raw.lists
+        .filter(l => l && typeof l === 'object')
+        .map((l, idx) => ({
+          id: l.id || uid('ml'),
+          name: typeof l.name === 'string' && l.name.trim() ? l.name : `List ${idx + 1}`,
+          color: typeof l.color === 'string' ? l.color : 'sage',
+          items: Array.isArray(l.items)
+            ? l.items
+                .filter(it => it && typeof it === 'object')
+                .map(it => ({
+                  id: it.id || uid('mi'),
+                  name: typeof it.name === 'string' ? it.name : 'Unnamed Item',
+                  brand: typeof it.brand === 'string' ? it.brand : '',
+                  size: typeof it.size === 'string' ? it.size : '',
+                  qty: Math.max(1, Math.min(99, parseInt(it.qty, 10) || 1)),
+                  checked: Boolean(it.checked),
+                  note: typeof it.note === 'string' ? it.note : '',
+                  upc: typeof it.upc === 'string' ? it.upc : '',
+                  productId: typeof it.productId === 'string' ? it.productId : '',
+                  price: typeof it.price === 'number' && !Number.isNaN(it.price) ? it.price : null,
+                  promo: typeof it.promo === 'number' && !Number.isNaN(it.promo) ? it.promo : null,
+                  stockLevel: typeof it.stockLevel === 'string' ? it.stockLevel : 'UNKNOWN',
+                  aisle: typeof it.aisle === 'string' && it.aisle ? it.aisle : 'Custom / Other',
+                  imageUrl: typeof it.imageUrl === 'string' ? it.imageUrl : '',
+                  url: typeof it.url === 'string' ? it.url : '',
+                  updatedAt: typeof it.updatedAt === 'string' ? it.updatedAt : ''
+                }))
+            : []
+        }))
+    : base.lists;
+  const activeValid = lists.some(l => l.id === raw.activeListId);
+  return {
+    activeListId: activeValid ? raw.activeListId : lists[0].id,
+    groupBy: raw.groupBy === 'flat' ? 'flat' : 'aisle',
+    modality: raw.modality === 'DELIVERY' ? 'DELIVERY' : 'PICKUP',
+    lists
+  };
+}
 
 const DND_ABILITIES = [
   { key: 'str', label: 'STR', name: 'Strength' },

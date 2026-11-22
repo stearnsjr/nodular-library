@@ -840,6 +840,43 @@ function createCharacterBook(hallId, edition = '2024', shelfId = null) {
   );
 }
 
+function createMarketLedgerBook(hallId, shelfId = null) {
+  const info = findHallInfo(hallId);
+  if (!info) return null;
+  const hall = info.hall;
+  hall.collapsed = false;
+  const pal = getPalette();
+  const prevBays = packBooksIntoBays(hall.books, hall.shelves).length;
+  const sageSwatch = pal.find(s => s.id === 'sage') || pal[0];
+  const existingCount = hall.books.filter(b => isMarketLedger(b)).length;
+  const title = existingCount === 0 ? 'Market Ledger' : `Market Ledger ${existingCount + 1}`;
+  const chId = uid('ch');
+  const pId = uid('p');
+  const targetShelfId = resolveTargetShelfId(hall, shelfId);
+  const newBook = {
+    id: uid('b'),
+    itemType: 'book',
+    title,
+    color: sageSwatch.id,
+    pinned: false,
+    summary: 'Shopping Lists & Kroger Price Lookup',
+    ...(targetShelfId ? { shelfId: targetShelfId } : {}),
+    marketLedger: createDefaultMarketLedgerData('Weekly Groceries'),
+    chapters: [{ id: chId, title: 'Shopping Lists', color: sageSwatch.id }],
+    pages: [{ id: pId, chapterId: chId, title: 'Market Ledger', stamps: [], properties: [], body: '', html: '' }]
+  };
+  hall.books.push(newBook);
+  const nextBays = packBooksIntoBays(hall.books, hall.shelves).length;
+  commitChange();
+  openBookCenter(hall.id, newBook.id, pId, 'spread');
+  const shName = targetShelfId ? hall.shelves.find(s => s.id === targetShelfId)?.name : null;
+  showToast(shName
+    ? `Created Market Ledger on "${shName}"!`
+    : (nextBays > prevBays ? `Expanded "${hall.title}" with Bookshelf #${nextBays} & created Market Ledger!` : `Created Market Ledger in "${hall.title}"`)
+  );
+  return newBook;
+}
+
 function deleteBook(hallId, bookId) {
   if (hallId === CART_HALL_ID) {
     state.cart.books = (state.cart.books || []).filter(b => b.id !== bookId);
@@ -2212,6 +2249,7 @@ function renderInspector() {
         <span class="text-xs font-semibold" style="color:var(--ui-muted);">Shelf Items (${hall.books.length})</span>
         <div class="flex items-center gap-1 flex-wrap">
           ${hall.books.length > 0 ? `<button id="insp-toggle-organize" type="button" class="storybook-btn ${hallOrganizeMode ? 'active' : ''} rounded-xl px-2 py-1 text-[11px] font-bold cursor-pointer" title="Toggle tap buttons to reorder, move, or recycle shelf items">${hallOrganizeMode ? 'Done' : 'Organize'}</button>` : ''}
+          <button id="insp-add-market" class="storybook-btn rounded-xl px-2 py-1 text-[11px] font-bold cursor-pointer" title="Create a Market Ledger shopping list book with Kroger search &amp; cart sync">+ Market</button>
           <button id="insp-add-dndchar" class="storybook-btn rounded-xl px-2 py-1 text-[11px] font-bold cursor-pointer" title="Create a 3-page D&amp;D 5e / 2024 Character Sheet Book with Session Notes">+ D&amp;D</button>
           <button id="insp-add-scroll" class="storybook-btn rounded-xl px-2 py-1 text-[11px] font-semibold cursor-pointer" title="Shelve a single-page parchment Scroll">+ Scroll</button>
           <button id="insp-add-book" class="storybook-btn-primary rounded-xl px-2.5 py-1 text-[11px] font-semibold cursor-pointer">+ Book</button>
@@ -2222,6 +2260,8 @@ function renderInspector() {
           const bsw = getSwatch(b.color || hall.color);
           const isSc = isScrollItem(b);
           const isDnd = isCharacterBook(b);
+          const isMkt = isMarketLedger(b);
+          const mktCount = isMkt ? (b.marketLedger.lists || []).reduce((acc, l) => acc + (l.items || []).length, 0) : 0;
           const shelfObj = (hall.shelves || []).find(s => s.id === b.shelfId);
           return `
             <div class="space-y-1">
@@ -2235,7 +2275,7 @@ function renderInspector() {
                   <span class="truncate">${esc(b.title)}${b.pinned ? ' &#9733;' : ''}</span>
                   ${shelfObj ? `<span class="text-[9.5px] font-bold px-1.5 py-0.2 rounded-full shrink-0" style="background:var(--ui-accent-soft); color:var(--ui-accent);">${esc(truncate(shelfObj.name, 14))}</span>` : ''}
                 </span>
-                <span class="text-[11px] shrink-0" style="color:var(--ui-muted);">${isSc ? 'Scroll' : (isDnd ? `D&amp;D ${b.dndChar.edition === '5e' ? '5e' : '24'}` : `${b.pages.length} pp`)} &rarr;</span>
+                <span class="text-[11px] shrink-0" style="color:var(--ui-muted);">${isSc ? 'Scroll' : (isDnd ? `D&amp;D ${b.dndChar.edition === '5e' ? '5e' : '24'}` : (isMkt ? `Market (${mktCount})` : `${b.pages.length} pp`))} &rarr;</span>
               </button>
               ${hallOrganizeMode ? `
                 <div class="insp-organize-bar flex items-center gap-1 flex-wrap px-1 pb-1">
@@ -2328,6 +2368,7 @@ function renderInspector() {
     hallOrganizeMode = !hallOrganizeMode;
     renderInspector();
   });
+  document.getElementById('insp-add-market')?.addEventListener('click', () => createMarketLedgerBook(hall.id));
   document.getElementById('insp-add-dndchar').addEventListener('click', () => createCharacterBook(hall.id, '2024'));
   document.getElementById('insp-add-scroll').addEventListener('click', () => createScroll(hall.id));
   document.getElementById('insp-add-book').addEventListener('click', () => createBook(hall.id));
@@ -2405,4 +2446,5 @@ function renderAll() {
   renderInspector();
   if (openBookState.bookId) renderOpenBook(false);
   updateGlobalTasksMenuUI();
+  if (typeof updateGlobalMarketMenuUI === 'function') updateGlobalMarketMenuUI();
 }

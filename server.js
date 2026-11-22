@@ -4,6 +4,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { createKrogerService } = require('./kroger');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -21,6 +22,8 @@ const LIBRARY_PASSWORD = process.env.LIBRARY_PASSWORD || '';
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(BACKUP_DIR, { recursive: true });
 fs.mkdirSync(LIBRARIES_DIR, { recursive: true });
+
+const kroger = createKrogerService({ dataDir: DATA_DIR });
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -631,6 +634,128 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, { ok: true, name: rawName, libId: targetLibId, deletedCount, backups: listBackups() });
     } catch (err) {
       sendJson(res, 500, { error: err.message || 'Permanent delete failed' });
+    }
+    return;
+  }
+
+  // ---- KROGER PUBLIC API & OAUTH 2.0 ROUTES ----
+  if (pathname === '/api/kroger/status' && req.method === 'GET') {
+    sendJson(res, 200, kroger.getStatus(req));
+    return;
+  }
+
+  if (pathname === '/api/kroger/config' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      kroger.saveCredentials({
+        clientId: body.clientId,
+        clientSecret: body.clientSecret,
+        redirectUri: body.redirectUri,
+        env: body.env
+      });
+      sendJson(res, 200, { ok: true, status: kroger.getStatus(req) });
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Failed to save Kroger config' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/kroger/store' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      kroger.saveStore(body.store || null);
+      sendJson(res, 200, { ok: true, status: kroger.getStatus(req) });
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Failed to save store' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/kroger/locations' && req.method === 'GET') {
+    try {
+      const zip = url.searchParams.get('zip') || '';
+      const limit = url.searchParams.get('limit') || '10';
+      const locations = await kroger.searchLocations(zip, limit);
+      sendJson(res, 200, { locations });
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Store lookup failed' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/kroger/products' && req.method === 'GET') {
+    try {
+      const term = url.searchParams.get('term') || '';
+      const locationId = url.searchParams.get('locationId') || '';
+      const limit = url.searchParams.get('limit') || '12';
+      const products = await kroger.searchProducts({ term, locationId, limit });
+      sendJson(res, 200, { products });
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Product search failed' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/kroger/url' && req.method === 'GET') {
+    try {
+      const targetUrl = url.searchParams.get('url') || '';
+      const locationId = url.searchParams.get('locationId') || '';
+      const result = await kroger.lookupByUrl(targetUrl, locationId);
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'URL lookup failed' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/kroger/refresh' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const products = await kroger.refreshProducts(body.upcs || [], body.locationId || '');
+      sendJson(res, 200, { products });
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Price refresh failed' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/kroger/auth/start' && req.method === 'GET') {
+    try {
+      const authUrl = kroger.buildAuthStartUrl(req);
+      res.writeHead(302, { Location: authUrl, 'Cache-Control': 'no-store' });
+      res.end();
+    } catch (err) {
+      sendJson(res, err.statusCode || 400, { error: err.message || 'Unable to start Kroger sign-in' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/kroger/auth/callback' && req.method === 'GET') {
+    try {
+      await kroger.handleAuthCallback(url.searchParams);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Kroger Connected</title></head><body style="font-family:Georgia,serif;background:#f7f1e3;color:#362316;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;"><div style="background:#fffaf0;border:2px solid #c5ab86;border-radius:18px;padding:24px 28px;text-align:center;max-width:360px;"><h2 style="margin:0 0 8px;">Kroger Account Connected!</h2><p style="font-size:14px;color:#7a5c44;margin:0 0 14px;">Returning to Storyteller's Library…</p><script>try{if(window.opener&&!window.opener.closed){window.opener.postMessage({type:'kroger-auth-done',ok:true},window.location.origin);window.close();}}catch(e){}setTimeout(function(){window.location.replace('/?kroger=connected');},600);</script></div></body></html>`);
+    } catch (err) {
+      const msg = String(err.message || 'Authentication failed').replace(/[<>&"]/g, '');
+      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Kroger Sign-In Error</title></head><body style="font-family:Georgia,serif;background:#f7f1e3;color:#362316;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;"><div style="background:#fffaf0;border:2px solid #c5ab86;border-radius:18px;padding:24px 28px;text-align:center;max-width:420px;"><h2 style="margin:0 0 8px;color:#a33728;">Kroger Sign-In Failed</h2><p style="font-size:14px;color:#7a5c44;margin:0 0 16px;">${msg}</p><a href="/" style="display:inline-block;padding:8px 16px;border-radius:10px;background:#c96843;color:#fffaf2;text-decoration:none;font-weight:700;">Back to Library</a></div></body></html>`);
+    }
+    return;
+  }
+
+  if (pathname === '/api/kroger/auth/disconnect' && req.method === 'POST') {
+    kroger.disconnectUser();
+    sendJson(res, 200, { ok: true, status: kroger.getStatus(req) });
+    return;
+  }
+
+  if (pathname === '/api/kroger/cart/add' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const result = await kroger.addToCart(body.items || [], body.modality || 'PICKUP');
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Failed to add items to Kroger cart' });
     }
     return;
   }

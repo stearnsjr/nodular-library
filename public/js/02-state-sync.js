@@ -65,6 +65,9 @@ function normalizeLibraryState(lib) {
     if (book.dndChar && typeof book.dndChar === 'object') {
       book.dndChar = normalizeDndChar(book.dndChar);
     }
+    if (book.marketLedger && typeof book.marketLedger === 'object') {
+      book.marketLedger = normalizeMarketLedger(book.marketLedger);
+    }
     if (!validPalette.has(book.color)) book.color = hallColor;
     book.pinned = Boolean(book.pinned);
     if (!Array.isArray(book.pages)) book.pages = [];
