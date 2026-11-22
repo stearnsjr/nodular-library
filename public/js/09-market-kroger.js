@@ -14,12 +14,19 @@ const krogerState = {
   redirectUri: '',
   // Transient UI state for open Market Ledger
   leftTab: 'search', // 'search' | 'url'
+  quickMode: 'search', // 'search' | 'recent' | 'favorites' | 'on_sale'
   mobileTab: 'list', // 'list' | 'search'
   searchQuery: '',
   stockFilter: 'all', // 'all' | 'in_stock' | 'on_sale'
   searchLoading: false,
   searchError: '',
   searchResults: [],
+  dealsLoading: false,
+  dealsError: '',
+  dealsResults: [],
+  favorites: [],
+  favoritesRefreshing: false,
+  recentSearches: [],
   urlInput: '',
   urlLoading: false,
   urlError: '',
@@ -42,6 +49,8 @@ async function fetchKrogerStatus(silent = true) {
     krogerState.connected = Boolean(data.connected);
     krogerState.store = data.store || null;
     krogerState.redirectUri = data.redirectUri || `${window.location.origin}/api/kroger/auth/callback`;
+    if (Array.isArray(data.favorites)) krogerState.favorites = data.favorites;
+    if (Array.isArray(data.recentSearches)) krogerState.recentSearches = data.recentSearches;
     updateGlobalMarketMenuUI();
     if (openBookState.bookId) {
       const container = findOpenBookContainer(openBookState.hallId, openBookState.bookId);
@@ -157,12 +166,109 @@ function addKrogerProductToBook(book, prod) {
   commitChange();
 }
 
+function isKrogerFavorite(upcOrId) {
+  if (!upcOrId) return false;
+  return krogerState.favorites.some(f => f.upc === upcOrId || f.productId === upcOrId);
+}
+
+async function toggleKrogerFavorite(prod) {
+  if (!prod) return;
+  try {
+    const resp = await fetch('/api/kroger/favorites/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product: prod })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Could not update favorites');
+    if (Array.isArray(data.favorites)) krogerState.favorites = data.favorites;
+    showToast(data.isFavorite ? `Saved "${prod.name}" to Favorites` : `Removed "${prod.name}" from Favorites`);
+    renderOpenBook(false);
+  } catch (err) {
+    showToast(err.message || 'Could not update favorites');
+  }
+}
+
+async function refreshKrogerFavorites() {
+  if (krogerState.favoritesRefreshing || krogerState.favorites.length === 0) return;
+  if (!krogerState.configured) { openKrogerSettingsModal(); return; }
+  krogerState.favoritesRefreshing = true;
+  renderOpenBook(false);
+  try {
+    const upcs = krogerState.favorites.map(f => f.upc || f.productId).filter(Boolean);
+    const resp = await fetch('/api/kroger/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ upcs, locationId: krogerState.store?.locationId || '' })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Refresh failed');
+    const map = data.products || {};
+    krogerState.favorites = krogerState.favorites.map(f => {
+      const fresh = map[f.upc] || map[f.productId];
+      return fresh ? { ...f, ...fresh } : f;
+    });
+    showToast('Refreshed live prices & stock for your Favorites!');
+  } catch (err) {
+    showToast(err.message || 'Could not refresh favorites');
+  } finally {
+    krogerState.favoritesRefreshing = false;
+    renderOpenBook(false);
+  }
+}
+
+async function loadKrogerDeals(term = '') {
+  if (!krogerState.configured) {
+    krogerState.dealsError = 'Set up your Kroger API credentials in Kroger Settings to browse live store deals.';
+    krogerState.dealsResults = [];
+    renderOpenBook(false);
+    return;
+  }
+  krogerState.dealsLoading = true;
+  krogerState.dealsError = '';
+  renderOpenBook(false);
+  try {
+    const loc = krogerState.store?.locationId || '';
+    const qs = new URLSearchParams();
+    if (loc) qs.set('locationId', loc);
+    if ((term || '').trim().length >= 2) qs.set('term', term.trim());
+    const resp = await fetch(`/api/kroger/deals?${qs.toString()}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Could not load sale items');
+    krogerState.dealsResults = Array.isArray(data.deals) ? data.deals : [];
+  } catch (err) {
+    krogerState.dealsError = err.message || 'Could not load sale items';
+    krogerState.dealsResults = [];
+  } finally {
+    krogerState.dealsLoading = false;
+    renderOpenBook(false);
+  }
+}
+
+async function clearKrogerRecentSearches() {
+  try {
+    const resp = await fetch('/api/kroger/recent/clear', { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok && Array.isArray(data.recentSearches)) {
+      krogerState.recentSearches = data.recentSearches;
+    } else {
+      krogerState.recentSearches = [];
+    }
+    showToast('Cleared recent searches');
+    renderOpenBook(false);
+  } catch (err) {
+    showToast('Could not clear recent searches');
+  }
+}
+
 function renderKrogerProductCardHtml(prod, activeList) {
   const key = prod.upc || prod.productId;
   const existing = key && activeList
     ? activeList.items.find(i => (i.upc && i.upc === key) || (i.productId && i.productId === key))
     : null;
+  const isFav = isKrogerFavorite(key);
   const hasPromo = typeof prod.promo === 'number' && typeof prod.price === 'number' && prod.promo < prod.price;
+  const saveAmt = hasPromo ? (prod.price - prod.promo) : 0;
   const priceDisplay = hasPromo
     ? `<div class="font-storybook font-bold text-sm tabular-nums" style="color:#b54534;">$${prod.promo.toFixed(2)}</div>
        <div class="text-[10.5px] line-through tabular-nums" style="color:#7a5c44;">$${prod.price.toFixed(2)}</div>`
@@ -186,11 +292,19 @@ function renderKrogerProductCardHtml(prod, activeList) {
         <div class="font-storybook font-bold text-xs leading-snug line-clamp-2" style="color:#2d1a0f;" title="${esc(prod.name)}">${esc(prod.name)}</div>
         <div class="flex flex-wrap items-center gap-1 mt-1">
           ${marketStockBadgeHtml(prod.stockLevel)}
-          ${prod.aisle ? `<span class="text-[10px] px-1.5 py-0.2 rounded-md truncate max-w-[140px]" style="background:#f3e8d2; color:#5e4430;">${esc(prod.aisle)}</span>` : ''}
+          ${hasPromo ? `<span class="text-[10px] font-bold px-1.5 py-0.2 rounded-full" style="background:#fbe3df; color:#a33728;">Save $${saveAmt.toFixed(2)}</span>` : ''}
+          ${prod.aisle ? `<span class="text-[10px] px-1.5 py-0.2 rounded-md truncate max-w-[130px]" style="background:#f3e8d2; color:#5e4430;">${esc(prod.aisle)}</span>` : ''}
         </div>
       </div>
       <div class="text-right shrink-0 flex flex-col items-end gap-1.5">
-        <div>${priceDisplay}</div>
+        <div class="flex items-start gap-1.5">
+          <div>${priceDisplay}</div>
+          <button type="button" data-market-fav-upc="${esc(key)}" title="${isFav ? 'Remove from Favorites' : 'Save to Favorites'}"
+            class="w-6 h-6 rounded-lg flex items-center justify-center text-sm leading-none cursor-pointer bg-transparent border-0 transition-transform hover:scale-110"
+            style="color:${isFav ? '#d69e42' : '#b59d82'};">
+            ${isFav ? '&#9733;' : '&#9734;'}
+          </button>
+        </div>
         <button type="button" data-market-add-upc="${esc(key)}"
           class="rounded-xl px-2.5 py-1 text-[11px] font-bold cursor-pointer transition-transform hover:scale-105"
           style="background:${existing ? '#4f7c54' : '#c96843'}; color:#fffaf2; border:1.5px solid #3c2516;">
@@ -204,6 +318,7 @@ function renderKrogerProductCardHtml(prod, activeList) {
 async function runKrogerSearch(term) {
   const clean = (term || '').trim();
   krogerState.searchQuery = clean;
+  krogerState.quickMode = 'search';
   if (clean.length < 2) {
     krogerState.searchError = 'Type at least 2 characters to search Kroger.';
     krogerState.searchResults = [];
@@ -221,6 +336,7 @@ async function runKrogerSearch(term) {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Kroger search failed');
     krogerState.searchResults = Array.isArray(data.products) ? data.products : [];
+    if (Array.isArray(data.recentSearches)) krogerState.recentSearches = data.recentSearches;
   } catch (err) {
     krogerState.searchError = err.message || 'Search failed';
     krogerState.searchResults = [];
@@ -469,27 +585,104 @@ function renderMarketLedgerOpenBook(container, sw) {
           </button>
         </form>
 
-        <div class="flex flex-wrap items-center gap-1">
-          ${['Milk', 'Eggs', 'Avocados', 'Bread', 'Butter', 'Coffee', 'Chicken'].map(chip => `
-            <button type="button" data-market-quick="${chip}" class="px-2 py-0.5 rounded-full text-[10.5px] font-semibold cursor-pointer" style="background:#f3e8d2; color:#362316; border:1px solid #c5ab86;">${chip}</button>
-          `).join('')}
+        <div class="flex flex-wrap items-center gap-1.5">
+          <button type="button" data-market-qmode="recent"
+            class="px-2.5 py-1 rounded-xl text-[11px] font-bold cursor-pointer flex items-center gap-1 transition-colors"
+            style="background:${krogerState.quickMode === 'recent' ? '#c96843' : '#f3e8d2'}; color:${krogerState.quickMode === 'recent' ? '#fffaf2' : '#362316'}; border:1.5px solid ${krogerState.quickMode === 'recent' ? '#3c2516' : '#c5ab86'};">
+            <span>&#128337;</span>
+            <span>Recently Searched${krogerState.recentSearches.length ? ` (${krogerState.recentSearches.length})` : ''}</span>
+          </button>
+          <button type="button" data-market-qmode="favorites"
+            class="px-2.5 py-1 rounded-xl text-[11px] font-bold cursor-pointer flex items-center gap-1 transition-colors"
+            style="background:${krogerState.quickMode === 'favorites' ? '#d69e42' : '#f3e8d2'}; color:${krogerState.quickMode === 'favorites' ? '#352012' : '#362316'}; border:1.5px solid ${krogerState.quickMode === 'favorites' ? '#3c2516' : '#c5ab86'};">
+            <span>&#9733;</span>
+            <span>My Favorites${krogerState.favorites.length ? ` (${krogerState.favorites.length})` : ''}</span>
+          </button>
+          <button type="button" data-market-qmode="on_sale"
+            class="px-2.5 py-1 rounded-xl text-[11px] font-bold cursor-pointer flex items-center gap-1 transition-colors"
+            style="background:${krogerState.quickMode === 'on_sale' ? '#b54534' : '#f3e8d2'}; color:${krogerState.quickMode === 'on_sale' ? '#fffaf2' : '#362316'}; border:1.5px solid ${krogerState.quickMode === 'on_sale' ? '#3c2516' : '#c5ab86'};">
+            <span>&#127991;</span>
+            <span>On Sale</span>
+          </button>
         </div>
 
-        ${krogerState.searchError ? `<div class="rounded-xl p-2.5 text-xs font-semibold" style="background:#fbe3df; color:#a33728; border:1px solid #e0a79e;">${esc(krogerState.searchError)}</div>` : ''}
-
-        ${krogerState.searchLoading ? `
-          <div class="text-center py-8 text-xs" style="color:#7a5c44;">Searching Kroger catalog…</div>
-        ` : (filteredResults.length > 0 ? `
+        ${krogerState.quickMode === 'recent' ? `
+          <div class="rounded-2xl p-3 space-y-2.5" style="background:#f5ebd7; border:1.5px solid #d7c3a1;">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-storybook font-bold text-xs" style="color:#2d1a0f;">Recently Searched</span>
+              ${krogerState.recentSearches.length > 0 ? `<button id="market-clear-recent" type="button" class="text-[10.5px] font-semibold underline bg-transparent border-0 cursor-pointer" style="color:#7a5c44;">Clear History</button>` : ''}
+            </div>
+            ${krogerState.recentSearches.length > 0 ? `
+              <div class="flex flex-wrap gap-1.5">
+                ${krogerState.recentSearches.map(term => `
+                  <button type="button" data-market-recent-term="${esc(term)}" class="px-2.5 py-1 rounded-full text-xs font-semibold cursor-pointer transition-transform hover:scale-105" style="background:#fffdf8; color:#362316; border:1.2px solid #c5ab86;">
+                    &#128269; ${esc(term)}
+                  </button>
+                `).join('')}
+              </div>
+            ` : `
+              <div class="text-xs py-3 text-center" style="color:#7a5c44;">Your recent Kroger searches will appear here automatically.</div>
+            `}
+          </div>
+        ` : krogerState.quickMode === 'favorites' ? `
           <div class="space-y-2">
-            ${filteredResults.map(p => renderKrogerProductCardHtml(p, activeList)).join('')}
+            <div class="flex items-center justify-between gap-2 px-0.5">
+              <span class="font-storybook font-bold text-xs" style="color:#2d1a0f;">My Favorites (${krogerState.favorites.length})</span>
+              ${krogerState.favorites.length > 0 ? `
+                <button id="market-refresh-favs" type="button" ${krogerState.favoritesRefreshing ? 'disabled' : ''} class="rounded-lg px-2 py-0.5 text-[10.5px] font-bold cursor-pointer disabled:opacity-50" style="background:#f3e8d2; color:#362316; border:1px solid #c5ab86;">
+                  ${krogerState.favoritesRefreshing ? 'Refreshing…' : '&#8635; Refresh Prices'}
+                </button>
+              ` : ''}
+            </div>
+            ${krogerState.favorites.length > 0 ? `
+              <div class="space-y-2">
+                ${krogerState.favorites.map(p => renderKrogerProductCardHtml(p, activeList)).join('')}
+              </div>
+            ` : `
+              <div class="rounded-2xl p-4 text-center space-y-1 text-xs" style="background:#f5ebd7; border:1.5px solid #d7c3a1; color:#7a5c44;">
+                <div class="font-bold" style="color:#2d1a0f;">No favorites saved yet</div>
+                <p class="text-[11px]">Tap the <strong>&#9734;</strong> star on any Kroger product from Search, On Sale, or Paste URL to keep your go-to staples right here.</p>
+              </div>
+            `}
+          </div>
+        ` : krogerState.quickMode === 'on_sale' ? `
+          <div class="space-y-2">
+            <div class="flex items-center justify-between gap-2 px-0.5">
+              <span class="font-storybook font-bold text-xs" style="color:#2d1a0f;">
+                ${krogerState.searchQuery.trim().length >= 2 ? `On Sale for "${esc(krogerState.searchQuery.trim())}"` : 'On Sale at Your Store'}
+              </span>
+              <button id="market-reload-deals" type="button" ${krogerState.dealsLoading ? 'disabled' : ''} class="rounded-lg px-2 py-0.5 text-[10.5px] font-bold cursor-pointer disabled:opacity-50" style="background:#f3e8d2; color:#362316; border:1px solid #c5ab86;">
+                ${krogerState.dealsLoading ? 'Loading…' : '&#8635; Refresh Deals'}
+              </button>
+            </div>
+            ${krogerState.dealsError ? `<div class="rounded-xl p-2.5 text-xs font-semibold" style="background:#fbe3df; color:#a33728; border:1px solid #e0a79e;">${esc(krogerState.dealsError)}</div>` : ''}
+            ${krogerState.dealsLoading ? `
+              <div class="text-center py-8 text-xs" style="color:#7a5c44;">Checking live Kroger promotions at your store…</div>
+            ` : (krogerState.dealsResults.length > 0 ? `
+              <div class="space-y-2">
+                ${krogerState.dealsResults.map(p => renderKrogerProductCardHtml(p, activeList)).join('')}
+              </div>
+            ` : `
+              <div class="text-center py-8 text-xs" style="color:#7a5c44;">No active sale items found right now. Try searching a specific item above and clicking On Sale!</div>
+            `)}
           </div>
         ` : `
-          <div class="text-center py-8 text-xs" style="color:#7a5c44;">
-            ${krogerState.searchResults.length > 0
-              ? 'No items matched your stock/sale filter.'
-              : 'Search for any grocery item above to view live Kroger prices, aisles, and availability.'}
-          </div>
-        `)}
+          ${krogerState.searchError ? `<div class="rounded-xl p-2.5 text-xs font-semibold" style="background:#fbe3df; color:#a33728; border:1px solid #e0a79e;">${esc(krogerState.searchError)}</div>` : ''}
+
+          ${krogerState.searchLoading ? `
+            <div class="text-center py-8 text-xs" style="color:#7a5c44;">Searching Kroger catalog…</div>
+          ` : (filteredResults.length > 0 ? `
+            <div class="space-y-2">
+              ${filteredResults.map(p => renderKrogerProductCardHtml(p, activeList)).join('')}
+            </div>
+          ` : `
+            <div class="text-center py-8 text-xs" style="color:#7a5c44;">
+              ${krogerState.searchResults.length > 0
+                ? 'No items matched your stock/sale filter.'
+                : 'Search for any grocery item above, or tap Recently Searched, My Favorites, or On Sale.'}
+            </div>
+          `)}
+        `}
       ` : `
         <form id="market-url-form" class="rounded-2xl p-3 space-y-2.5" style="background:#f5ebd7; border:1.5px solid #c5ab86;">
           <div class="text-xs font-bold" style="color:#2d1a0f;">Paste a Kroger Product URL or 13-digit UPC</div>
@@ -691,8 +884,33 @@ function renderMarketLedgerOpenBook(container, sw) {
     krogerState.stockFilter = e.target.value;
     renderOpenBook(false);
   });
-  bookLeftEl.querySelectorAll('[data-market-quick]').forEach(btn => {
-    btn.addEventListener('click', () => runKrogerSearch(btn.dataset.marketQuick));
+  bookLeftEl.querySelectorAll('[data-market-qmode]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.marketQmode;
+      if (krogerState.quickMode === mode) {
+        krogerState.quickMode = 'search';
+        renderOpenBook(false);
+        return;
+      }
+      krogerState.quickMode = mode;
+      if (mode === 'on_sale') {
+        const currentInput = (document.getElementById('market-search-input')?.value || krogerState.searchQuery || '').trim();
+        krogerState.searchQuery = currentInput;
+        loadKrogerDeals(currentInput);
+        return;
+      }
+      renderOpenBook(false);
+    });
+  });
+
+  bookLeftEl.querySelectorAll('[data-market-recent-term]').forEach(btn => {
+    btn.addEventListener('click', () => runKrogerSearch(btn.dataset.marketRecentTerm));
+  });
+  document.getElementById('market-clear-recent')?.addEventListener('click', () => clearKrogerRecentSearches());
+  document.getElementById('market-refresh-favs')?.addEventListener('click', () => refreshKrogerFavorites());
+  document.getElementById('market-reload-deals')?.addEventListener('click', () => {
+    const currentInput = (document.getElementById('market-search-input')?.value || krogerState.searchQuery || '').trim();
+    loadKrogerDeals(currentInput);
   });
 
   document.getElementById('market-url-form')?.addEventListener('submit', (e) => {
@@ -701,12 +919,32 @@ function renderMarketLedgerOpenBook(container, sw) {
     runKrogerUrlLookup(inp?.value || '');
   });
 
+  const findProductByKey = (key) => {
+    if (!key) return null;
+    const pools = [
+      krogerState.searchResults,
+      krogerState.dealsResults,
+      krogerState.favorites,
+      krogerState.urlResult ? [krogerState.urlResult] : []
+    ];
+    for (const pool of pools) {
+      const hit = pool.find(p => p && ((p.upc && p.upc === key) || (p.productId && p.productId === key)));
+      if (hit) return hit;
+    }
+    return null;
+  };
+
   bookLeftEl.querySelectorAll('[data-market-add-upc]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const key = btn.dataset.marketAddUpc;
-      const prod = krogerState.searchResults.find(p => (p.upc || p.productId) === key)
-        || ((krogerState.urlResult && (krogerState.urlResult.upc || krogerState.urlResult.productId) === key) ? krogerState.urlResult : null);
+      const prod = findProductByKey(btn.dataset.marketAddUpc);
       if (prod) addKrogerProductToBook(book, prod);
+    });
+  });
+
+  bookLeftEl.querySelectorAll('[data-market-fav-upc]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const prod = findProductByKey(btn.dataset.marketFavUpc);
+      if (prod) toggleKrogerFavorite(prod);
     });
   });
 

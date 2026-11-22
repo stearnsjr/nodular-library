@@ -689,10 +689,45 @@ const server = http.createServer(async (req, res) => {
       const locationId = url.searchParams.get('locationId') || '';
       const limit = url.searchParams.get('limit') || '12';
       const products = await kroger.searchProducts({ term, locationId, limit });
-      sendJson(res, 200, { products });
+      const recentSearches = kroger.recordRecentSearch(term);
+      sendJson(res, 200, { products, recentSearches });
     } catch (err) {
       sendJson(res, err.statusCode || 500, { error: err.message || 'Product search failed' });
     }
+    return;
+  }
+
+  if (pathname === '/api/kroger/deals' && req.method === 'GET') {
+    try {
+      const term = url.searchParams.get('term') || '';
+      const locationId = url.searchParams.get('locationId') || '';
+      const deals = await kroger.getDeals({ term, locationId });
+      sendJson(res, 200, { deals });
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Could not fetch sale items' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/kroger/favorites' && req.method === 'GET') {
+    sendJson(res, 200, { favorites: kroger.getFavorites() });
+    return;
+  }
+
+  if (pathname === '/api/kroger/favorites/toggle' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const result = kroger.toggleFavorite(body.product || body);
+      sendJson(res, 200, { ok: true, ...result });
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Could not update favorites' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/kroger/recent/clear' && req.method === 'POST') {
+    const recentSearches = kroger.clearRecentSearches();
+    sendJson(res, 200, { ok: true, recentSearches });
     return;
   }
 

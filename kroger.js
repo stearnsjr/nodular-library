@@ -70,7 +70,9 @@ function createKrogerService({ dataDir }) {
       connected: configured && hasUserToken,
       connectedAt: cfg.userAuth?.connectedAt || null,
       store: cfg.store || null,
-      redirectUri: resolveRedirectUri(req)
+      redirectUri: resolveRedirectUri(req),
+      favorites: Array.isArray(cfg.favorites) ? cfg.favorites : [],
+      recentSearches: Array.isArray(cfg.recentSearches) ? cfg.recentSearches : []
     };
   }
 
@@ -476,6 +478,97 @@ function createKrogerService({ dataDir }) {
     return { ok: true, addedCount: payloadItems.length, modality: cleanModality };
   }
 
+  function getFavorites() {
+    const cfg = readConfigFile();
+    return Array.isArray(cfg.favorites) ? cfg.favorites : [];
+  }
+
+  function toggleFavorite(product) {
+    if (!product || typeof product !== 'object') {
+      throw Object.assign(new Error('Invalid product payload.'), { statusCode: 400 });
+    }
+    const key = String(product.upc || product.productId || '').trim();
+    if (!key) {
+      throw Object.assign(new Error('Product must have a UPC or productId to favorite.'), { statusCode: 400 });
+    }
+    const existing = getFavorites();
+    const idx = existing.findIndex((p) => (p.upc && p.upc === key) || (p.productId && p.productId === key));
+    let next;
+    let isFavorite;
+    if (idx >= 0) {
+      next = existing.filter((_, i) => i !== idx);
+      isFavorite = false;
+    } else {
+      const clean = {
+        upc: String(product.upc || key),
+        productId: String(product.productId || key),
+        brand: String(product.brand || '').trim(),
+        name: String(product.name || 'Unnamed Product').trim(),
+        size: String(product.size || '').trim(),
+        price: typeof product.price === 'number' ? product.price : null,
+        promo: typeof product.promo === 'number' ? product.promo : null,
+        stockLevel: String(product.stockLevel || 'UNKNOWN'),
+        aisle: String(product.aisle || 'Grocery'),
+        imageUrl: String(product.imageUrl || ''),
+        url: String(product.url || `https://www.kroger.com/p/item/${key}`),
+        favoritedAt: new Date().toISOString()
+      };
+      next = [clean, ...existing].slice(0, 100);
+      isFavorite = true;
+    }
+    writeConfigFile({ favorites: next });
+    return { favorites: next, isFavorite };
+  }
+
+  function getRecentSearches() {
+    const cfg = readConfigFile();
+    return Array.isArray(cfg.recentSearches) ? cfg.recentSearches : [];
+  }
+
+  function recordRecentSearch(term) {
+    const clean = String(term || '').trim().slice(0, 80);
+    if (clean.length < 2) return getRecentSearches();
+    const prev = getRecentSearches();
+    const next = [clean, ...prev.filter((t) => t.toLowerCase() !== clean.toLowerCase())].slice(0, 12);
+    writeConfigFile({ recentSearches: next });
+    return next;
+  }
+
+  function clearRecentSearches() {
+    writeConfigFile({ recentSearches: [] });
+    return [];
+  }
+
+  async function getDeals({ locationId, term = '' } = {}) {
+    const cleanTerm = String(term || '').trim();
+    const queries = cleanTerm.length >= 2
+      ? [cleanTerm]
+      : ['milk', 'cheese', 'chicken', 'bread', 'coffee', 'pasta', 'cereal', 'fruit'];
+
+    const perLimit = cleanTerm.length >= 2 ? 25 : 10;
+    const batches = await Promise.all(
+      queries.map((q) => searchProducts({ term: q, locationId, limit: perLimit }).catch(() => []))
+    );
+
+    const byUpc = new Map();
+    for (const list of batches) {
+      for (const p of list) {
+        const key = p.upc || p.productId;
+        if (!key || byUpc.has(key)) continue;
+        if (typeof p.promo === 'number' && typeof p.price === 'number' && p.promo > 0 && p.promo < p.price) {
+          byUpc.set(key, p);
+        }
+      }
+    }
+
+    const deals = Array.from(byUpc.values()).sort((a, b) => {
+      const pctA = (a.price - a.promo) / a.price;
+      const pctB = (b.price - b.promo) / b.price;
+      return pctB - pctA;
+    });
+    return deals.slice(0, 24);
+  }
+
   return {
     getStatus,
     saveCredentials,
@@ -488,7 +581,13 @@ function createKrogerService({ dataDir }) {
     searchProducts,
     lookupByUrl,
     refreshProducts,
-    addToCart
+    addToCart,
+    getFavorites,
+    toggleFavorite,
+    getRecentSearches,
+    recordRecentSearch,
+    clearRecentSearches,
+    getDeals
   };
 }
 
