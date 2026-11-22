@@ -1,82 +1,867 @@
 // ============================================================
-// 6B. COZY FOLEY AUDIO & TWO-WAY LITTLE LIBRARIANS (~2s ADAPTIVE PACE + AMBIENT LIFE)
+// 6B. COZY FOLEY AUDIO, PROCEDURAL LOFI MUSIC & LITTLE LIBRARIANS
 // ============================================================
 let ambientLifeEnabled = true;
-let soundEnabled = false; // Muted by default!
-let cozyAudioCtx = null;
 
-function playCozySound(kind = 'page') {
-  if (!soundEnabled) return;
-  const AudioCtx = window.AudioContext || window.webkitAudioContext;
-  if (!AudioCtx) return;
+const AUDIO_PREFS_KEY = 'storytellers_audio_prefs_v1';
+let soundEnabled = false; // Muted by default until user enables!
+let foleyVolume = 0.78;
+let lofiPlaying = false;
+let lofiVolume = 0.44;
+let lofiMood = 'sunlit'; // 'sunlit' | 'candlelight' | 'ambient'
+let lofiVinylEnabled = true;
+let rainPlaying = false;
+let rainVolume = 0.34;
+
+try {
+  const savedAudio = JSON.parse(localStorage.getItem(AUDIO_PREFS_KEY) || 'null');
+  if (savedAudio && typeof savedAudio === 'object') {
+    if (typeof savedAudio.soundEnabled === 'boolean') soundEnabled = savedAudio.soundEnabled;
+    if (typeof savedAudio.foleyVolume === 'number') foleyVolume = Math.max(0, Math.min(1, savedAudio.foleyVolume));
+    if (typeof savedAudio.lofiVolume === 'number') lofiVolume = Math.max(0, Math.min(1, savedAudio.lofiVolume));
+    if (['sunlit', 'candlelight', 'ambient'].includes(savedAudio.lofiMood)) lofiMood = savedAudio.lofiMood;
+    if (typeof savedAudio.lofiVinylEnabled === 'boolean') lofiVinylEnabled = savedAudio.lofiVinylEnabled;
+    if (typeof savedAudio.rainVolume === 'number') rainVolume = Math.max(0, Math.min(1, savedAudio.rainVolume));
+  }
+} catch (err) {}
+
+function saveAudioPrefs() {
   try {
-    if (!cozyAudioCtx) cozyAudioCtx = new AudioCtx();
-    if (cozyAudioCtx.state === 'suspended') cozyAudioCtx.resume();
-    const now = cozyAudioCtx.currentTime;
+    localStorage.setItem(AUDIO_PREFS_KEY, JSON.stringify({
+      soundEnabled,
+      foleyVolume,
+      lofiVolume,
+      lofiMood,
+      lofiVinylEnabled,
+      rainVolume
+    }));
+  } catch (err) {}
+}
 
-    if (kind === 'page') {
-      // Soft filtered paper rustle
-      const dur = 0.085;
-      const buf = cozyAudioCtx.createBuffer(1, Math.floor(cozyAudioCtx.sampleRate * dur), cozyAudioCtx.sampleRate);
-      const data = buf.getChannelData(0);
-      for (let i = 0; i < data.length; i++) {
-        const env = Math.sin((i / data.length) * Math.PI);
-        data[i] = (Math.random() * 2 - 1) * env * 0.22;
+let cozyAudioCtx = null;
+let foleyMasterGain = null;
+let cozyNoiseBuffers = null;
+let cozyReverbImpulse = null;
+
+function ensureCozyAudio() {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return null;
+  try {
+    if (!cozyAudioCtx) {
+      cozyAudioCtx = new AudioCtx();
+      foleyMasterGain = cozyAudioCtx.createGain();
+      foleyMasterGain.gain.setValueAtTime(foleyVolume, cozyAudioCtx.currentTime);
+      foleyMasterGain.connect(cozyAudioCtx.destination);
+    }
+    if (cozyAudioCtx.state === 'suspended') {
+      cozyAudioCtx.resume().catch(() => {});
+    }
+    if (!cozyNoiseBuffers) {
+      const sr = cozyAudioCtx.sampleRate;
+      const whiteLen = Math.floor(sr * 2.0);
+      const whiteBuf = cozyAudioCtx.createBuffer(1, whiteLen, sr);
+      const wd = whiteBuf.getChannelData(0);
+      for (let i = 0; i < whiteLen; i++) wd[i] = Math.random() * 2 - 1;
+
+      const pinkLen = Math.floor(sr * 3.0);
+      const pinkBuf = cozyAudioCtx.createBuffer(1, pinkLen, sr);
+      const pd = pinkBuf.getChannelData(0);
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      for (let i = 0; i < pinkLen; i++) {
+        const w = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + w * 0.0555179;
+        b1 = 0.99332 * b1 + w * 0.0750759;
+        b2 = 0.96900 * b2 + w * 0.1538520;
+        b3 = 0.86650 * b3 + w * 0.3104856;
+        b4 = 0.55000 * b4 + w * 0.5329522;
+        b5 = -0.7616 * b5 - w * 0.0168980;
+        pd[i] = Math.max(-1, Math.min(1, (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11));
+        b6 = w * 0.115926;
       }
-      const src = cozyAudioCtx.createBufferSource();
-      src.buffer = buf;
-      const filter = cozyAudioCtx.createBiquadFilter();
-      filter.type = 'bandpass';
-      filter.frequency.setValueAtTime(1900, now);
-      filter.Q.setValueAtTime(1.1, now);
-      const gain = cozyAudioCtx.createGain();
-      gain.gain.setValueAtTime(0.16, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-      src.connect(filter).connect(gain).connect(cozyAudioCtx.destination);
-      src.start(now);
-    } else if (kind === 'thump') {
-      // Warm wooden bookshelf thump
-      const osc = cozyAudioCtx.createOscillator();
-      const gain = cozyAudioCtx.createGain();
+
+      const brownLen = Math.floor(sr * 3.0);
+      const brownBuf = cozyAudioCtx.createBuffer(1, brownLen, sr);
+      const bd = brownBuf.getChannelData(0);
+      let lastOut = 0;
+      for (let i = 0; i < brownLen; i++) {
+        const w = Math.random() * 2 - 1;
+        lastOut = (lastOut + 0.02 * w) / 1.02;
+        bd[i] = Math.max(-1, Math.min(1, lastOut * 3.2));
+      }
+
+      cozyNoiseBuffers = { white: whiteBuf, pink: pinkBuf, brown: brownBuf };
+    }
+    if (!cozyReverbImpulse) {
+      const sr = cozyAudioCtx.sampleRate;
+      const len = Math.floor(sr * 1.45);
+      const imp = cozyAudioCtx.createBuffer(2, len, sr);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = imp.getChannelData(ch);
+        let lp = 0;
+        for (let i = 0; i < len; i++) {
+          const decay = Math.pow(1 - i / len, 2.6);
+          const raw = (Math.random() * 2 - 1) * decay;
+          lp = lp * 0.72 + raw * 0.28;
+          d[i] = lp;
+        }
+      }
+      cozyReverbImpulse = imp;
+    }
+    return cozyAudioCtx;
+  } catch (err) {
+    return null;
+  }
+}
+
+function foleyJitter(val, spread = 0.06) {
+  return val * (1 + (Math.random() * 2 - 1) * spread);
+}
+
+function playFilteredNoiseBurst(ctx, dest, buf, startTime, dur, opts = {}) {
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const maxOffset = Math.max(0, buf.duration - dur - 0.05);
+  const offset = maxOffset > 0 ? Math.random() * maxOffset : 0;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = opts.filterType || 'bandpass';
+  const fStart = opts.freqStart || 1600;
+  const fEnd = opts.freqEnd || fStart;
+  filter.frequency.setValueAtTime(Math.max(40, fStart), startTime);
+  if (fEnd !== fStart) {
+    filter.frequency.exponentialRampToValueAtTime(Math.max(40, fEnd), startTime + dur);
+  }
+  if (opts.Q != null) filter.Q.setValueAtTime(opts.Q, startTime);
+
+  const gain = ctx.createGain();
+  const peak = opts.gainPeak || 0.15;
+  const atk = Math.min(dur * 0.45, opts.attack || 0.014);
+  gain.gain.setValueAtTime(0.0001, startTime);
+  gain.gain.linearRampToValueAtTime(peak, startTime + atk);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startTime + dur);
+
+  src.connect(filter).connect(gain).connect(dest);
+  src.start(startTime, offset, dur + 0.02);
+}
+
+function playCozySound(kind = 'page', opts = {}) {
+  if (!soundEnabled && !opts.preview) return;
+  const ctx = ensureCozyAudio();
+  if (!ctx || !foleyMasterGain) return;
+  try {
+    const now = ctx.currentTime;
+    const dest = opts.preview ? ctx.destination : foleyMasterGain;
+    const scale = opts.preview ? Math.max(0.35, foleyVolume) : 1.0;
+
+    if (kind === 'page' || kind === 'page-turn' || kind === 'paper') {
+      // Tactile two-stage parchment page turn: thumb lift crinkle + curved paper swish
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.white, now, 0.032, {
+        filterType: 'highpass', freqStart: foleyJitter(3100, 0.08), Q: 0.7, gainPeak: 0.05 * scale, attack: 0.006
+      });
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.pink, now + 0.012, foleyJitter(0.145, 0.08), {
+        filterType: 'bandpass', freqStart: foleyJitter(1350, 0.07), freqEnd: foleyJitter(2650, 0.08), Q: 1.35, gainPeak: 0.24 * scale, attack: 0.032
+      });
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.pink, now + 0.115, 0.055, {
+        filterType: 'bandpass', freqStart: foleyJitter(1900, 0.06), freqEnd: foleyJitter(1050, 0.06), Q: 1.1, gainPeak: 0.09 * scale, attack: 0.012
+      });
+    } else if (kind === 'page-flip') {
+      // Brisk chapter-tab cardstock flick
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.pink, now, 0.085, {
+        filterType: 'bandpass', freqStart: foleyJitter(2100, 0.07), freqEnd: foleyJitter(3400, 0.07), Q: 1.6, gainPeak: 0.2 * scale, attack: 0.012
+      });
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.white, now + 0.048, 0.026, {
+        filterType: 'bandpass', freqStart: foleyJitter(2800, 0.08), Q: 2.2, gainPeak: 0.08 * scale, attack: 0.004
+      });
+    } else if (kind === 'book-open') {
+      // Hardcover leather/cloth lift + lush fanning flutter of pages settling open
+      const osc = ctx.createOscillator();
+      const og = ctx.createGain();
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(155, now);
-      osc.frequency.exponentialRampToValueAtTime(58, now + 0.11);
-      gain.gain.setValueAtTime(0.22, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-      osc.connect(gain).connect(cozyAudioCtx.destination);
+      osc.frequency.setValueAtTime(foleyJitter(108, 0.06), now);
+      osc.frequency.exponentialRampToValueAtTime(foleyJitter(162, 0.06), now + 0.07);
+      og.gain.setValueAtTime(0.0001, now);
+      og.gain.linearRampToValueAtTime(0.12 * scale, now + 0.014);
+      og.gain.exponentialRampToValueAtTime(0.0001, now + 0.095);
+      osc.connect(og).connect(dest);
       osc.start(now);
-      osc.stop(now + 0.13);
+      osc.stop(now + 0.105);
+
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.pink, now + 0.035, 0.19, {
+        filterType: 'bandpass', freqStart: foleyJitter(1050, 0.07), freqEnd: foleyJitter(2500, 0.07), Q: 1.1, gainPeak: 0.25 * scale, attack: 0.045
+      });
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.white, now + 0.095, 0.11, {
+        filterType: 'bandpass', freqStart: foleyJitter(3200, 0.08), freqEnd: foleyJitter(1800, 0.08), Q: 1.4, gainPeak: 0.08 * scale, attack: 0.02
+      });
+    } else if (kind === 'book-close') {
+      // Folding pages whoosh followed by a satisfying muted hardcover clap
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.pink, now, 0.095, {
+        filterType: 'bandpass', freqStart: foleyJitter(1850, 0.07), freqEnd: foleyJitter(680, 0.07), Q: 1.15, gainPeak: 0.18 * scale, attack: 0.018
+      });
+      const tClap = now + 0.058;
+      const osc = ctx.createOscillator();
+      const og = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(foleyJitter(172, 0.06), tClap);
+      osc.frequency.exponentialRampToValueAtTime(foleyJitter(54, 0.06), tClap + 0.11);
+      og.gain.setValueAtTime(0.28 * scale, tClap);
+      og.gain.exponentialRampToValueAtTime(0.0001, tClap + 0.125);
+      osc.connect(og).connect(dest);
+      osc.start(tClap);
+      osc.stop(tClap + 0.135);
+
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.brown, tClap, 0.09, {
+        filterType: 'lowpass', freqStart: foleyJitter(540, 0.08), freqEnd: 180, Q: 0.8, gainPeak: 0.24 * scale, attack: 0.004
+      });
+    } else if (kind === 'scroll-open') {
+      // Unrolling parchment scroll with wooden dowel roll
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.pink, now, 0.25, {
+        filterType: 'bandpass', freqStart: foleyJitter(820, 0.06), freqEnd: foleyJitter(2150, 0.07), Q: 1.3, gainPeak: 0.23 * scale, attack: 0.045
+      });
+      const osc = ctx.createOscillator();
+      const og = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(foleyJitter(280, 0.06), now + 0.19);
+      osc.frequency.exponentialRampToValueAtTime(160, now + 0.24);
+      og.gain.setValueAtTime(0.09 * scale, now + 0.19);
+      og.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+      osc.connect(og).connect(dest);
+      osc.start(now + 0.19);
+      osc.stop(now + 0.26);
+    } else if (kind === 'scroll-close') {
+      // Rolling parchment scroll shut + gentle wooden dowel tap
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.pink, now, 0.2, {
+        filterType: 'bandpass', freqStart: foleyJitter(2050, 0.07), freqEnd: foleyJitter(880, 0.07), Q: 1.25, gainPeak: 0.2 * scale, attack: 0.03
+      });
+      const osc = ctx.createOscillator();
+      const og = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(foleyJitter(310, 0.06), now + 0.16);
+      osc.frequency.exponentialRampToValueAtTime(140, now + 0.21);
+      og.gain.setValueAtTime(0.11 * scale, now + 0.16);
+      og.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+      osc.connect(og).connect(dest);
+      osc.start(now + 0.16);
+      osc.stop(now + 0.23);
+    } else if (kind === 'thump' || kind === 'shelve') {
+      // Sliding a volume onto an oak bookshelf with warm wooden knock
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.pink, now, 0.052, {
+        filterType: 'bandpass', freqStart: foleyJitter(540, 0.08), freqEnd: 820, Q: 1.0, gainPeak: 0.09 * scale, attack: 0.01
+      });
+      const tHit = now + 0.025;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(foleyJitter(156, 0.07), tHit);
+      osc.frequency.exponentialRampToValueAtTime(foleyJitter(56, 0.07), tHit + 0.12);
+      gain.gain.setValueAtTime(0.24 * scale, tHit);
+      gain.gain.exponentialRampToValueAtTime(0.0001, tHit + 0.13);
+      osc.connect(gain).connect(dest);
+      osc.start(tHit);
+      osc.stop(tHit + 0.14);
+
+      const wood = ctx.createOscillator();
+      const wg = ctx.createGain();
+      wood.type = 'sine';
+      wood.frequency.setValueAtTime(foleyJitter(325, 0.08), tHit);
+      wood.frequency.exponentialRampToValueAtTime(190, tHit + 0.045);
+      wg.gain.setValueAtTime(0.08 * scale, tHit);
+      wg.gain.exponentialRampToValueAtTime(0.0001, tHit + 0.05);
+      wood.connect(wg).connect(dest);
+      wood.start(tHit);
+      wood.stop(tHit + 0.055);
+    } else if (kind === 'book-slide') {
+      // Soft cloth-on-oak book slide + gentle desk tap
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.pink, now, 0.125, {
+        filterType: 'bandpass', freqStart: foleyJitter(620, 0.08), freqEnd: foleyJitter(1120, 0.08), Q: 1.15, gainPeak: 0.15 * scale, attack: 0.025
+      });
+      const osc = ctx.createOscillator();
+      const og = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(foleyJitter(142, 0.06), now + 0.085);
+      osc.frequency.exponentialRampToValueAtTime(68, now + 0.145);
+      og.gain.setValueAtTime(0.11 * scale, now + 0.085);
+      og.gain.exponentialRampToValueAtTime(0.0001, now + 0.155);
+      osc.connect(og).connect(dest);
+      osc.start(now + 0.085);
+      osc.stop(now + 0.165);
+    } else if (kind === 'drawer-open') {
+      // Wooden card catalog drawer sliding open
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.pink, now, 0.16, {
+        filterType: 'bandpass', freqStart: foleyJitter(360, 0.06), freqEnd: foleyJitter(640, 0.06), Q: 1.4, gainPeak: 0.14 * scale, attack: 0.03
+      });
+      const osc = ctx.createOscillator();
+      const og = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(foleyJitter(1180, 0.05), now + 0.02);
+      og.gain.setValueAtTime(0.032 * scale, now + 0.02);
+      og.gain.exponentialRampToValueAtTime(0.0001, now + 0.065);
+      osc.connect(og).connect(dest);
+      osc.start(now + 0.02);
+      osc.stop(now + 0.07);
+    } else if (kind === 'drawer-close') {
+      // Wooden card catalog drawer gliding shut with muted stop
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.pink, now, 0.12, {
+        filterType: 'bandpass', freqStart: foleyJitter(590, 0.06), freqEnd: foleyJitter(310, 0.06), Q: 1.35, gainPeak: 0.12 * scale, attack: 0.02
+      });
+      const osc = ctx.createOscillator();
+      const og = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(foleyJitter(124, 0.06), now + 0.09);
+      osc.frequency.exponentialRampToValueAtTime(54, now + 0.16);
+      og.gain.setValueAtTime(0.15 * scale, now + 0.09);
+      og.gain.exponentialRampToValueAtTime(0.0001, now + 0.17);
+      osc.connect(og).connect(dest);
+      osc.start(now + 0.09);
+      osc.stop(now + 0.175);
+    } else if (kind === 'stamp') {
+      // Vintage inked rubber stamp thud
+      const osc = ctx.createOscillator();
+      const og = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(foleyJitter(205, 0.06), now);
+      osc.frequency.exponentialRampToValueAtTime(72, now + 0.072);
+      og.gain.setValueAtTime(0.24 * scale, now);
+      og.gain.exponentialRampToValueAtTime(0.0001, now + 0.082);
+      osc.connect(og).connect(dest);
+      osc.start(now);
+      osc.stop(now + 0.09);
+
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.pink, now, 0.042, {
+        filterType: 'bandpass', freqStart: foleyJitter(1500, 0.08), freqEnd: 850, Q: 1.5, gainPeak: 0.15 * scale, attack: 0.004
+      });
+    } else if (kind === 'ribbon') {
+      // Airy silk bookmark ribbon swish
+      playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.white, now, 0.17, {
+        filterType: 'bandpass', freqStart: foleyJitter(3100, 0.07), freqEnd: foleyJitter(5100, 0.07), Q: 2.2, gainPeak: 0.09 * scale, attack: 0.04
+      });
+      const osc = ctx.createOscillator();
+      const og = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(foleyJitter(1318, 0.04), now + 0.05);
+      og.gain.setValueAtTime(0.025 * scale, now + 0.05);
+      og.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+      osc.connect(og).connect(dest);
+      osc.start(now + 0.05);
+      osc.stop(now + 0.23);
+    } else if (kind === 'crumple') {
+      // Parchment crumple tossed into wicker recycling basket
+      [0, 0.048, 0.105].forEach((delay, idx) => {
+        playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.white, now + delay, 0.052, {
+          filterType: 'bandpass', freqStart: foleyJitter(2200 + idx * 550, 0.12), freqEnd: foleyJitter(1600, 0.12), Q: 1.8, gainPeak: (0.13 - idx * 0.02) * scale, attack: 0.007
+        });
+      });
+      const osc = ctx.createOscillator();
+      const og = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(foleyJitter(145, 0.08), now + 0.13);
+      osc.frequency.exponentialRampToValueAtTime(74, now + 0.21);
+      og.gain.setValueAtTime(0.12 * scale, now + 0.13);
+      og.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+      osc.connect(og).connect(dest);
+      osc.start(now + 0.13);
+      osc.stop(now + 0.23);
+    } else if (kind === 'dice') {
+      // Staggered wooden/resin D&D dice clatter on an oak table
+      const bounces = [0, 0.055, 0.102, 0.142];
+      bounces.forEach((delay, idx) => {
+        const amp = Math.pow(0.72, idx) * scale;
+        playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.white, now + delay, 0.024, {
+          filterType: 'bandpass', freqStart: foleyJitter(1750 + idx * 240, 0.12), Q: 2.8, gainPeak: 0.18 * amp, attack: 0.002
+        });
+        const osc = ctx.createOscillator();
+        const og = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(foleyJitter(540 + idx * 95, 0.12), now + delay);
+        osc.frequency.exponentialRampToValueAtTime(220, now + delay + 0.028);
+        og.gain.setValueAtTime(0.12 * amp, now + delay);
+        og.gain.exponentialRampToValueAtTime(0.0001, now + delay + 0.032);
+        osc.connect(og).connect(dest);
+        osc.start(now + delay);
+        osc.stop(now + delay + 0.036);
+      });
+    } else if (kind === 'lamp') {
+      // Brass reading lamp pull-chain click
+      [0, 0.026].forEach((delay, idx) => {
+        playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.white, now + delay, 0.018, {
+          filterType: 'bandpass', freqStart: idx === 0 ? 2500 : 3300, Q: 3.2, gainPeak: 0.14 * scale, attack: 0.002
+        });
+      });
+      const osc = ctx.createOscillator();
+      const og = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(920, now + 0.024);
+      og.gain.setValueAtTime(0.038 * scale, now + 0.024);
+      og.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+      osc.connect(og).connect(dest);
+      osc.start(now + 0.024);
+      osc.stop(now + 0.095);
     } else if (kind === 'chime') {
-      // Gentle brass bell chime
-      const osc = cozyAudioCtx.createOscillator();
-      const gain = cozyAudioCtx.createGain();
+      // Gentle two-note brass desk bell chime with soft harmonic shimmer
+      const osc = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const gain2 = ctx.createGain();
       osc.type = 'sine';
+      osc2.type = 'sine';
       osc.frequency.setValueAtTime(740, now);
-      osc.frequency.setValueAtTime(988, now + 0.065);
-      gain.gain.setValueAtTime(0.08, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
-      osc.connect(gain).connect(cozyAudioCtx.destination);
-      osc.start(now);
-      osc.stop(now + 0.29);
+      osc.frequency.setValueAtTime(988, now + 0.068);
+      osc2.frequency.setValueAtTime(1480, now);
+      osc2.frequency.setValueAtTime(1976, now + 0.068);
+      gain.gain.setValueAtTime(0.085 * scale, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.34);
+      gain2.gain.setValueAtTime(0.022 * scale, now);
+      gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+      osc.connect(gain).connect(dest);
+      osc2.connect(gain2).connect(dest);
+      osc.start(now); osc2.start(now);
+      osc.stop(now + 0.35); osc2.stop(now + 0.25);
     } else if (kind === 'purr') {
-      // Cozy low cat purr rumble
-      const osc = cozyAudioCtx.createOscillator();
-      const lfo = cozyAudioCtx.createOscillator();
-      const lfoGain = cozyAudioCtx.createGain();
-      const gain = cozyAudioCtx.createGain();
+      // Cozy low cat purr rumble for Mochi
+      const osc = ctx.createOscillator();
+      const lfo = ctx.createOscillator();
+      const lfoGain = ctx.createGain();
+      const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(72, now);
-      lfo.frequency.setValueAtTime(24, now);
-      lfoGain.gain.setValueAtTime(0.05, now);
-      gain.gain.setValueAtTime(0.08, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+      osc.frequency.setValueAtTime(foleyJitter(70, 0.04), now);
+      lfo.frequency.setValueAtTime(24.5, now);
+      lfoGain.gain.setValueAtTime(0.048 * scale, now);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.095 * scale, now + 0.12);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.64);
       lfo.connect(lfoGain).connect(gain.gain);
-      osc.connect(gain).connect(cozyAudioCtx.destination);
+      osc.connect(gain).connect(dest);
       lfo.start(now); osc.start(now);
-      lfo.stop(now + 0.56); osc.stop(now + 0.56);
+      lfo.stop(now + 0.66); osc.stop(now + 0.66);
     }
   } catch (err) {}
 }
+
+// ============================================================
+// 6C. PROCEDURAL COZY LOFI STUDY MUSIC & WINDOW RAIN ENGINE
+// ============================================================
+const LOFI_MOODS = {
+  sunlit: {
+    name: 'Sunlit Study',
+    bpm: 74,
+    drums: true,
+    filterHz: 2850,
+    chords: [
+      { bass: 41, notes: [53, 57, 60, 64, 67] }, // Fmaj9
+      { bass: 40, notes: [52, 55, 59, 62, 67] }, // Em7(11)
+      { bass: 38, notes: [50, 53, 57, 60, 64] }, // Dm9
+      { bass: 36, notes: [48, 52, 55, 59, 62] }, // Cmaj9
+      { bass: 41, notes: [53, 57, 60, 64, 67] }, // Fmaj9
+      { bass: 43, notes: [55, 59, 62, 65, 69] }, // G13
+      { bass: 45, notes: [57, 60, 64, 67, 71] }, // Am9
+      { bass: 38, notes: [50, 53, 57, 60, 64] }  // Dm9
+    ],
+    scale: [60, 62, 64, 67, 69, 72, 74, 76, 79]
+  },
+  candlelight: {
+    name: 'Candlelight Jazz',
+    bpm: 65,
+    drums: true,
+    filterHz: 2150,
+    chords: [
+      { bass: 38, notes: [50, 53, 57, 60, 64] }, // Dm9
+      { bass: 43, notes: [55, 59, 62, 65, 69] }, // G13
+      { bass: 36, notes: [48, 52, 55, 59, 62] }, // Cmaj9
+      { bass: 45, notes: [55, 58, 61, 64, 69] }, // A7b9
+      { bass: 46, notes: [53, 57, 58, 62, 65] }, // Bbmaj7
+      { bass: 45, notes: [55, 57, 62, 64, 67] }, // A7sus4
+      { bass: 38, notes: [50, 53, 57, 60, 64] }, // Dm9
+      { bass: 40, notes: [52, 55, 58, 62, 64] }  // Em7b5
+    ],
+    scale: [57, 60, 62, 64, 65, 67, 69, 72, 74]
+  },
+  ambient: {
+    name: 'Ambient Keys',
+    bpm: 60,
+    drums: false,
+    filterHz: 2550,
+    chords: [
+      { bass: 43, notes: [55, 59, 62, 66, 69] }, // Gmaj9
+      { bass: 40, notes: [52, 55, 59, 62, 66] }, // Em9
+      { bass: 36, notes: [48, 52, 55, 59, 62] }, // Cmaj9
+      { bass: 38, notes: [50, 54, 57, 62, 64] }  // D6/9
+    ],
+    scale: [62, 64, 66, 67, 69, 71, 74, 76, 78]
+  }
+};
+
+function midiToHz(m) {
+  return 440 * Math.pow(2, (m - 69) / 12);
+}
+
+let lofiBus = null;
+let lofiSchedulerId = null;
+let lofiNextStepTime = 0;
+let lofiStepIndex = 0;
+let lofiBarIndex = 0;
+let lofiVinylSource = null;
+let lofiVinylGain = null;
+
+function ensureLofiBus() {
+  const ctx = ensureCozyAudio();
+  if (!ctx) return null;
+  if (lofiBus) return lofiBus;
+
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.0001, ctx.currentTime);
+
+  const toneFilter = ctx.createBiquadFilter();
+  toneFilter.type = 'lowpass';
+  toneFilter.frequency.setValueAtTime(LOFI_MOODS[lofiMood].filterHz, ctx.currentTime);
+  toneFilter.Q.setValueAtTime(0.55, ctx.currentTime);
+
+  const dryGain = ctx.createGain();
+  dryGain.gain.setValueAtTime(0.8, ctx.currentTime);
+
+  const wetGain = ctx.createGain();
+  wetGain.gain.setValueAtTime(0.32, ctx.currentTime);
+
+  const convolver = ctx.createConvolver();
+  convolver.buffer = cozyReverbImpulse;
+
+  toneFilter.connect(dryGain).connect(master);
+  toneFilter.connect(convolver).connect(wetGain).connect(master);
+  master.connect(ctx.destination);
+
+  lofiBus = { master, toneFilter, dryGain, wetGain };
+  return lofiBus;
+}
+
+function syncLofiVinylNode() {
+  const ctx = cozyAudioCtx;
+  if (!ctx || !lofiBus) return;
+  const shouldRun = lofiPlaying && lofiVinylEnabled;
+  if (shouldRun && !lofiVinylSource) {
+    const src = ctx.createBufferSource();
+    src.buffer = cozyNoiseBuffers.pink;
+    src.loop = true;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.setValueAtTime(1600, ctx.currentTime);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(4800, ctx.currentTime);
+    const vg = ctx.createGain();
+    vg.gain.setValueAtTime(0.0001, ctx.currentTime);
+    vg.gain.setTargetAtTime(0.026, ctx.currentTime, 0.25);
+    src.connect(hp).connect(lp).connect(vg).connect(lofiBus.master);
+    src.start(ctx.currentTime);
+    lofiVinylSource = src;
+    lofiVinylGain = vg;
+  } else if (!shouldRun && lofiVinylSource) {
+    const oldSrc = lofiVinylSource;
+    const oldGain = lofiVinylGain;
+    lofiVinylSource = null;
+    lofiVinylGain = null;
+    try {
+      oldGain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.08);
+      setTimeout(() => { try { oldSrc.stop(); oldSrc.disconnect(); } catch (e) {} }, 350);
+    } catch (e) {}
+  }
+}
+
+function scheduleRhodesNote(ctx, dest, midi, time, dur, vel = 0.12, isBell = false) {
+  const freq = midiToHz(midi) * (1 + (Math.random() - 0.5) * 0.0022);
+  const osc1 = ctx.createOscillator();
+  const osc2 = ctx.createOscillator();
+  const env = ctx.createGain();
+  const tineEnv = ctx.createGain();
+
+  osc1.type = 'sine';
+  osc1.frequency.setValueAtTime(freq, time);
+  osc2.type = isBell ? 'sine' : 'triangle';
+  osc2.frequency.setValueAtTime(freq * (isBell ? 3 : 2), time);
+
+  env.gain.setValueAtTime(0.0001, time);
+  env.gain.linearRampToValueAtTime(vel, time + 0.018);
+  env.gain.exponentialRampToValueAtTime(Math.max(0.0001, vel * 0.35), time + dur * 0.45);
+  env.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+
+  tineEnv.gain.setValueAtTime(0.0001, time);
+  tineEnv.gain.linearRampToValueAtTime(vel * (isBell ? 0.32 : 0.16), time + 0.008);
+  tineEnv.gain.exponentialRampToValueAtTime(0.0001, time + Math.min(0.28, dur * 0.35));
+
+  osc1.connect(env).connect(dest);
+  osc2.connect(tineEnv).connect(dest);
+  osc1.start(time);
+  osc2.start(time);
+  osc1.stop(time + dur + 0.05);
+  osc2.stop(time + dur + 0.05);
+}
+
+function scheduleLofiBass(ctx, dest, midi, time, dur, vel = 0.22) {
+  const osc = ctx.createOscillator();
+  const lp = ctx.createBiquadFilter();
+  const env = ctx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(midiToHz(midi), time);
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(240, time);
+  env.gain.setValueAtTime(0.0001, time);
+  env.gain.linearRampToValueAtTime(vel, time + 0.025);
+  env.gain.exponentialRampToValueAtTime(0.0001, time + dur);
+  osc.connect(lp).connect(env).connect(dest);
+  osc.start(time);
+  osc.stop(time + dur + 0.04);
+}
+
+function scheduleLofiDrum(ctx, dest, kind, time) {
+  if (kind === 'kick') {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(112, time);
+    osc.frequency.exponentialRampToValueAtTime(42, time + 0.11);
+    g.gain.setValueAtTime(0.26, time);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.19);
+    osc.connect(g).connect(dest);
+    osc.start(time);
+    osc.stop(time + 0.2);
+  } else if (kind === 'snare') {
+    playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.pink, time, 0.11, {
+      filterType: 'bandpass', freqStart: 1350, freqEnd: 850, Q: 0.9, gainPeak: 0.11, attack: 0.005
+    });
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(190, time);
+    osc.frequency.exponentialRampToValueAtTime(115, time + 0.055);
+    g.gain.setValueAtTime(0.075, time);
+    g.gain.exponentialRampToValueAtTime(0.0001, time + 0.065);
+    osc.connect(g).connect(dest);
+    osc.start(time);
+    osc.stop(time + 0.07);
+  } else if (kind === 'hat') {
+    playFilteredNoiseBurst(ctx, dest, cozyNoiseBuffers.white, time, 0.036, {
+      filterType: 'highpass', freqStart: 5200, Q: 0.7, gainPeak: 0.032, attack: 0.003
+    });
+  }
+}
+
+function scheduleLofiStep(stepInBar, barIdx, time) {
+  const ctx = cozyAudioCtx;
+  if (!ctx || !lofiBus) return;
+  const mood = LOFI_MOODS[lofiMood] || LOFI_MOODS.sunlit;
+  const stepDur = (60 / mood.bpm) / 2; // eighth-note grid (8 steps per bar)
+  const swingOffset = (stepInBar % 2 === 1) ? stepDur * 0.14 : 0;
+  const t = time + swingOffset;
+
+  const chord = mood.chords[barIdx % mood.chords.length];
+
+  // Lush strummed Rhodes chord on beat 1 (and gentle re-voicing on beat 3.5 occasionally)
+  if (stepInBar === 0) {
+    const barDur = stepDur * 7.8;
+    chord.notes.forEach((m, idx) => {
+      const strumDelay = idx * (mood.drums ? 0.032 : 0.075) + Math.random() * 0.008;
+      scheduleRhodesNote(ctx, lofiBus.toneFilter, m, t + strumDelay, barDur, 0.062 - idx * 0.004, !mood.drums && idx >= 3);
+    });
+    scheduleLofiBass(ctx, lofiBus.toneFilter, chord.bass, t, stepDur * 4.2, mood.drums ? 0.2 : 0.15);
+  } else if (stepInBar === 4) {
+    const bassNote = (barIdx % 2 === 0) ? chord.bass + 7 : chord.bass;
+    scheduleLofiBass(ctx, lofiBus.toneFilter, bassNote, t, stepDur * 3.6, mood.drums ? 0.14 : 0.11);
+    if (!mood.drums) {
+      // Gentle upper arpeggio sparkle in Ambient Keys mode
+      const topNote = chord.notes[chord.notes.length - 1] + 12;
+      scheduleRhodesNote(ctx, lofiBus.toneFilter, topNote, t + 0.04, stepDur * 3.8, 0.042, true);
+    }
+  } else if (stepInBar === 6 && Math.random() < 0.45) {
+    // Soft offbeat chord ghost
+    const pick = chord.notes.slice(1, 4);
+    pick.forEach((m, idx) => {
+      scheduleRhodesNote(ctx, lofiBus.toneFilter, m, t + idx * 0.025, stepDur * 2.1, 0.036, false);
+    });
+  }
+
+  // Sparse, dreamy pentatonic / jazz melody notes
+  const melChance = mood.drums ? 0.28 : 0.36;
+  if (stepInBar !== 0 && Math.random() < melChance) {
+    const note = mood.scale[Math.floor(Math.random() * mood.scale.length)];
+    const dur = stepDur * (1.8 + Math.random() * 2.2);
+    scheduleRhodesNote(ctx, lofiBus.toneFilter, note, t + 0.01, dur, 0.048 + Math.random() * 0.02, !mood.drums);
+  }
+
+  // Soft dusty boom-bap drums
+  if (mood.drums) {
+    if (stepInBar === 0 || (stepInBar === 5 && Math.random() < 0.72) || (stepInBar === 3 && Math.random() < 0.28)) {
+      scheduleLofiDrum(ctx, lofiBus.toneFilter, 'kick', t);
+    }
+    if (stepInBar === 2 || stepInBar === 6) {
+      scheduleLofiDrum(ctx, lofiBus.toneFilter, 'snare', t + 0.008);
+    }
+    if (stepInBar % 2 === 0 || Math.random() < 0.65) {
+      scheduleLofiDrum(ctx, lofiBus.toneFilter, 'hat', t);
+    }
+  }
+
+  // Subtle random vinyl dust pop
+  if (lofiVinylEnabled && Math.random() < 0.22) {
+    const popTime = t + Math.random() * stepDur * 0.85;
+    playFilteredNoiseBurst(ctx, lofiBus.master, cozyNoiseBuffers.white, popTime, 0.007, {
+      filterType: 'bandpass', freqStart: 2400 + Math.random() * 2200, Q: 3.5, gainPeak: 0.028, attack: 0.001
+    });
+  }
+}
+
+function lofiSchedulerTick() {
+  if (!lofiPlaying || !cozyAudioCtx) return;
+  const mood = LOFI_MOODS[lofiMood] || LOFI_MOODS.sunlit;
+  const stepDur = (60 / mood.bpm) / 2;
+  while (lofiNextStepTime < cozyAudioCtx.currentTime + 0.35) {
+    scheduleLofiStep(lofiStepIndex, lofiBarIndex, lofiNextStepTime);
+    lofiNextStepTime += stepDur;
+    lofiStepIndex++;
+    if (lofiStepIndex >= 8) {
+      lofiStepIndex = 0;
+      lofiBarIndex++;
+    }
+  }
+}
+
+function startLofiMusic() {
+  const bus = ensureLofiBus();
+  if (!bus || !cozyAudioCtx) return;
+  lofiPlaying = true;
+  const now = cozyAudioCtx.currentTime;
+  bus.toneFilter.frequency.setTargetAtTime(LOFI_MOODS[lofiMood].filterHz, now, 0.2);
+  bus.master.gain.setTargetAtTime(Math.max(0.0001, lofiVolume * 0.85), now, 0.28);
+  syncLofiVinylNode();
+  if (!lofiSchedulerId) {
+    lofiStepIndex = 0;
+    lofiNextStepTime = now + 0.08;
+    lofiSchedulerTick();
+    lofiSchedulerId = setInterval(lofiSchedulerTick, 120);
+  }
+}
+
+function stopLofiMusic() {
+  lofiPlaying = false;
+  if (lofiSchedulerId) {
+    clearInterval(lofiSchedulerId);
+    lofiSchedulerId = null;
+  }
+  syncLofiVinylNode();
+  if (lofiBus && cozyAudioCtx) {
+    lofiBus.master.gain.setTargetAtTime(0.0001, cozyAudioCtx.currentTime, 0.16);
+  }
+}
+
+function setLofiMood(moodKey) {
+  if (!LOFI_MOODS[moodKey]) return;
+  lofiMood = moodKey;
+  saveAudioPrefs();
+  if (lofiBus && cozyAudioCtx) {
+    lofiBus.toneFilter.frequency.setTargetAtTime(LOFI_MOODS[lofiMood].filterHz, cozyAudioCtx.currentTime, 0.25);
+  }
+}
+
+function setLofiVolume(v) {
+  lofiVolume = Math.max(0, Math.min(1, Number(v) || 0));
+  saveAudioPrefs();
+  if (lofiPlaying && lofiBus && cozyAudioCtx) {
+    lofiBus.master.gain.setTargetAtTime(Math.max(0.0001, lofiVolume * 0.85), cozyAudioCtx.currentTime, 0.08);
+  }
+}
+
+function setFoleyVolume(v) {
+  foleyVolume = Math.max(0, Math.min(1, Number(v) || 0));
+  saveAudioPrefs();
+  if (foleyMasterGain && cozyAudioCtx) {
+    foleyMasterGain.gain.setTargetAtTime(foleyVolume, cozyAudioCtx.currentTime, 0.05);
+  }
+}
+
+function setLofiVinylEnabled(enabled) {
+  lofiVinylEnabled = Boolean(enabled);
+  saveAudioPrefs();
+  syncLofiVinylNode();
+}
+
+// Cozy Rain on Library Windows ambience
+let rainNodes = null;
+
+function startLibraryRain() {
+  const ctx = ensureCozyAudio();
+  if (!ctx) return;
+  rainPlaying = true;
+  if (rainNodes) {
+    rainNodes.master.gain.setTargetAtTime(Math.max(0.0001, rainVolume * 0.45), ctx.currentTime, 0.35);
+    return;
+  }
+  const now = ctx.currentTime;
+  const master = ctx.createGain();
+  master.gain.setValueAtTime(0.0001, now);
+  master.gain.setTargetAtTime(Math.max(0.0001, rainVolume * 0.45), now, 0.4);
+  master.connect(ctx.destination);
+
+  // Warm steady window patter
+  const lowSrc = ctx.createBufferSource();
+  lowSrc.buffer = cozyNoiseBuffers.brown;
+  lowSrc.loop = true;
+  const lowFilter = ctx.createBiquadFilter();
+  lowFilter.type = 'bandpass';
+  lowFilter.frequency.setValueAtTime(420, now);
+  lowFilter.Q.setValueAtTime(0.65, now);
+  const lowGain = ctx.createGain();
+  lowGain.gain.setValueAtTime(0.55, now);
+  lowSrc.connect(lowFilter).connect(lowGain).connect(master);
+
+  // Soft misty drizzle with gentle slow breathing LFO
+  const hiSrc = ctx.createBufferSource();
+  hiSrc.buffer = cozyNoiseBuffers.pink;
+  hiSrc.loop = true;
+  const hiFilter = ctx.createBiquadFilter();
+  hiFilter.type = 'bandpass';
+  hiFilter.frequency.setValueAtTime(1750, now);
+  hiFilter.Q.setValueAtTime(0.75, now);
+  const hiGain = ctx.createGain();
+  hiGain.gain.setValueAtTime(0.28, now);
+
+  const lfo = ctx.createOscillator();
+  const lfoGain = ctx.createGain();
+  lfo.frequency.setValueAtTime(0.13, now);
+  lfoGain.gain.setValueAtTime(340, now);
+  lfo.connect(lfoGain).connect(hiFilter.frequency);
+
+  hiSrc.connect(hiFilter).connect(hiGain).connect(master);
+
+  lowSrc.start(now);
+  hiSrc.start(now);
+  lfo.start(now);
+  rainNodes = { master, lowSrc, hiSrc, lfo };
+}
+
+function stopLibraryRain() {
+  rainPlaying = false;
+  if (!rainNodes || !cozyAudioCtx) return;
+  const old = rainNodes;
+  rainNodes = null;
+  try {
+    old.master.gain.setTargetAtTime(0.0001, cozyAudioCtx.currentTime, 0.2);
+    setTimeout(() => {
+      try { old.lowSrc.stop(); old.hiSrc.stop(); old.lfo.stop(); old.master.disconnect(); } catch (e) {}
+    }, 650);
+  } catch (e) {}
+}
+
+function setRainVolume(v) {
+  rainVolume = Math.max(0, Math.min(1, Number(v) || 0));
+  saveAudioPrefs();
+  if (rainPlaying && rainNodes && cozyAudioCtx) {
+    rainNodes.master.gain.setTargetAtTime(Math.max(0.0001, rainVolume * 0.45), cozyAudioCtx.currentTime, 0.08);
+  }
+}
+
+function muteAllLibraryAudio() {
+  soundEnabled = false;
+  saveAudioPrefs();
+  if (lofiPlaying) stopLofiMusic();
+  if (rainPlaying) stopLibraryRain();
+}
+
 
 const LIBRARIAN_PERSONAS = [
   { name: 'Archivist Maren', coat: '#567d5c', coatDeep: '#335238', hair: '#6e3f25', hat: 'bun' },

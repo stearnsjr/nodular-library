@@ -492,6 +492,7 @@ function closeAllMenus() {
   menuIO.classList.add('hidden');
   menuTasks?.classList.add('hidden');
   document.getElementById('menu-market')?.classList.add('hidden');
+  document.getElementById('menu-audio')?.classList.add('hidden');
   searchResults.classList.add('hidden');
 }
 
@@ -835,6 +836,7 @@ document.getElementById('btn-redo').addEventListener('click', redo);
 document.getElementById('btn-atmosphere').addEventListener('click', () => {
   manualAtmosphere = true;
   applyAtmosphere(!isCandlelight);
+  playCozySound('lamp');
   showToast(isCandlelight ? 'Candlelight Evening mode' : 'Sunlit Daylight mode');
 });
 
@@ -858,22 +860,216 @@ if (btnAmbient) {
 
 const btnSound = document.getElementById('btn-sound');
 const iconSound = document.getElementById('icon-sound');
+const soundMusicDot = document.getElementById('sound-music-dot');
+const menuAudio = document.getElementById('menu-audio');
+
 function updateSoundButtonUI() {
   if (!btnSound) return;
-  btnSound.classList.toggle('active', soundEnabled);
+  const anyAudioOn = soundEnabled || lofiPlaying || rainPlaying;
+  btnSound.classList.toggle('active', anyAudioOn);
+  if (soundMusicDot) {
+    soundMusicDot.classList.toggle('hidden', !(lofiPlaying || rainPlaying));
+  }
   if (iconSound) {
-    iconSound.innerHTML = soundEnabled
+    iconSound.innerHTML = anyAudioOn
       ? '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>'
       : '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>';
   }
 }
+
+function renderAudioMenu() {
+  if (!menuAudio) return;
+  const anyAudioOn = soundEnabled || lofiPlaying || rainPlaying;
+  const moods = [
+    { key: 'sunlit', label: 'Sunlit Study' },
+    { key: 'candlelight', label: 'Candlelight' },
+    { key: 'ambient', label: 'Ambient Keys' }
+  ];
+  const previews = [
+    { kind: 'book-open', label: 'Open' },
+    { kind: 'book-close', label: 'Close' },
+    { kind: 'page', label: 'Page' },
+    { kind: 'stamp', label: 'Stamp' },
+    { kind: 'purr', label: 'Purr' }
+  ];
+
+  menuAudio.innerHTML = `
+    <div class="flex items-center justify-between gap-2 pb-1.5 border-b" style="border-color: var(--ui-border);">
+      <div class="flex items-center gap-1.5">
+        <span class="font-storybook font-bold text-xs" style="color: var(--ui-ink);">Library Soundscape</span>
+      </div>
+      ${anyAudioOn ? `<button id="audio-mute-all" type="button" class="text-[10.5px] font-bold px-2 py-0.5 rounded-lg cursor-pointer bg-transparent border hover:bg-black/5" style="border-color: var(--ui-border); color: var(--ui-muted);">Mute All</button>` : `<span class="text-[10.5px] italic" style="color: var(--ui-muted);">All quiet</span>`}
+    </div>
+
+    <!-- Library Foley SFX -->
+    <div class="rounded-xl p-2.5 space-y-2" style="background: var(--ui-surface-alt); border: 1px solid var(--ui-border);">
+      <div class="flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <div class="text-xs font-bold leading-tight" style="color: var(--ui-ink);">Library Foley SFX</div>
+          <div class="text-[10px]" style="color: var(--ui-muted);">Books, pages, scrolls, stamps &amp; drawers</div>
+        </div>
+        <button id="audio-toggle-foley" type="button" class="storybook-btn ${soundEnabled ? 'active' : ''} rounded-lg px-2.5 py-1 text-[11px] font-bold cursor-pointer shrink-0">
+          ${soundEnabled ? 'On' : 'Off'}
+        </button>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-[10px] font-semibold w-7 shrink-0" style="color: var(--ui-muted);">Vol</span>
+        <input id="audio-foley-vol" type="range" min="0" max="100" value="${Math.round(foleyVolume * 100)}" class="cozy-range flex-1" />
+        <span id="audio-foley-vol-lbl" class="text-[10px] font-mono w-7 text-right tabular-nums" style="color: var(--ui-muted);">${Math.round(foleyVolume * 100)}%</span>
+      </div>
+      <div class="flex items-center gap-1 flex-wrap pt-0.5">
+        <span class="text-[9.5px] font-semibold mr-0.5" style="color: var(--ui-muted);">Try:</span>
+        ${previews.map(p => `<button type="button" data-preview-foley="${p.kind}" class="rounded-md px-1.5 py-0.5 text-[10px] font-semibold cursor-pointer bg-transparent border hover:bg-black/5" style="border-color: var(--ui-border); color: var(--ui-ink);">${p.label}</button>`).join('')}
+      </div>
+    </div>
+
+    <!-- Procedural Lofi Study Music -->
+    <div class="rounded-xl p-2.5 space-y-2" style="background: var(--ui-surface-alt); border: 1px solid var(--ui-border);">
+      <div class="flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <div class="text-xs font-bold leading-tight" style="color: var(--ui-ink);">Lofi Study Music</div>
+          <div class="text-[10px]" style="color: var(--ui-muted);">Warm Rhodes chords &amp; dusty beats</div>
+        </div>
+        <button id="audio-toggle-lofi" type="button" class="storybook-btn ${lofiPlaying ? 'active' : ''} rounded-lg px-2.5 py-1 text-[11px] font-bold cursor-pointer shrink-0">
+          ${lofiPlaying ? 'Pause' : 'Play'}
+        </button>
+      </div>
+      <div class="grid grid-cols-3 gap-1">
+        ${moods.map(m => `
+          <button type="button" data-lofi-mood="${m.key}" class="storybook-btn ${lofiMood === m.key ? 'active' : ''} rounded-lg px-1.5 py-1 text-[10px] font-bold cursor-pointer truncate">
+            ${m.label}
+          </button>
+        `).join('')}
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-[10px] font-semibold w-7 shrink-0" style="color: var(--ui-muted);">Vol</span>
+        <input id="audio-lofi-vol" type="range" min="0" max="100" value="${Math.round(lofiVolume * 100)}" class="cozy-range flex-1" />
+        <span id="audio-lofi-vol-lbl" class="text-[10px] font-mono w-7 text-right tabular-nums" style="color: var(--ui-muted);">${Math.round(lofiVolume * 100)}%</span>
+      </div>
+      <label class="flex items-center justify-between gap-2 pt-0.5 cursor-pointer">
+        <span class="text-[10.5px] font-semibold" style="color: var(--ui-muted);">Warm Vinyl Crackle</span>
+        <input id="audio-lofi-vinyl" type="checkbox" ${lofiVinylEnabled ? 'checked' : ''} class="accent-amber-700 cursor-pointer" />
+      </label>
+    </div>
+
+    <!-- Window Rain Ambience -->
+    <div class="rounded-xl p-2.5 space-y-2" style="background: var(--ui-surface-alt); border: 1px solid var(--ui-border);">
+      <div class="flex items-center justify-between gap-2">
+        <div class="min-w-0">
+          <div class="text-xs font-bold leading-tight" style="color: var(--ui-ink);">Window Rain</div>
+          <div class="text-[10px]" style="color: var(--ui-muted);">Soft drizzle on library glass</div>
+        </div>
+        <button id="audio-toggle-rain" type="button" class="storybook-btn ${rainPlaying ? 'active' : ''} rounded-lg px-2.5 py-1 text-[11px] font-bold cursor-pointer shrink-0">
+          ${rainPlaying ? 'On' : 'Off'}
+        </button>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="text-[10px] font-semibold w-7 shrink-0" style="color: var(--ui-muted);">Vol</span>
+        <input id="audio-rain-vol" type="range" min="0" max="100" value="${Math.round(rainVolume * 100)}" class="cozy-range flex-1" />
+        <span id="audio-rain-vol-lbl" class="text-[10px] font-mono w-7 text-right tabular-nums" style="color: var(--ui-muted);">${Math.round(rainVolume * 100)}%</span>
+      </div>
+    </div>
+  `;
+
+  menuAudio.querySelector('#audio-mute-all')?.addEventListener('click', () => {
+    muteAllLibraryAudio();
+    updateSoundButtonUI();
+    renderAudioMenu();
+    showToast('All library audio muted');
+  });
+
+  menuAudio.querySelector('#audio-toggle-foley')?.addEventListener('click', () => {
+    soundEnabled = !soundEnabled;
+    saveAudioPrefs();
+    updateSoundButtonUI();
+    renderAudioMenu();
+    if (soundEnabled) playCozySound('book-open');
+    showToast(soundEnabled ? 'Cozy library foley sounds on' : 'Library foley sounds muted');
+  });
+
+  const foleyVolEl = menuAudio.querySelector('#audio-foley-vol');
+  const foleyVolLbl = menuAudio.querySelector('#audio-foley-vol-lbl');
+  foleyVolEl?.addEventListener('input', () => {
+    const pct = Number(foleyVolEl.value);
+    setFoleyVolume(pct / 100);
+    if (foleyVolLbl) foleyVolLbl.textContent = `${pct}%`;
+  });
+
+  menuAudio.querySelectorAll('[data-preview-foley]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      playCozySound(btn.dataset.previewFoley, { preview: true });
+    });
+  });
+
+  menuAudio.querySelector('#audio-toggle-lofi')?.addEventListener('click', () => {
+    if (lofiPlaying) {
+      stopLofiMusic();
+      showToast('Lofi study music paused');
+    } else {
+      startLofiMusic();
+      showToast(`Playing Lofi — ${LOFI_MOODS[lofiMood]?.name || 'Sunlit Study'}`);
+    }
+    updateSoundButtonUI();
+    renderAudioMenu();
+  });
+
+  menuAudio.querySelectorAll('[data-lofi-mood]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      setLofiMood(btn.dataset.lofiMood);
+      if (!lofiPlaying) startLofiMusic();
+      updateSoundButtonUI();
+      renderAudioMenu();
+      showToast(`Lofi mood: ${LOFI_MOODS[lofiMood]?.name}`);
+    });
+  });
+
+  const lofiVolEl = menuAudio.querySelector('#audio-lofi-vol');
+  const lofiVolLbl = menuAudio.querySelector('#audio-lofi-vol-lbl');
+  lofiVolEl?.addEventListener('input', () => {
+    const pct = Number(lofiVolEl.value);
+    setLofiVolume(pct / 100);
+    if (lofiVolLbl) lofiVolLbl.textContent = `${pct}%`;
+  });
+
+  menuAudio.querySelector('#audio-lofi-vinyl')?.addEventListener('change', (e) => {
+    setLofiVinylEnabled(e.target.checked);
+  });
+
+  menuAudio.querySelector('#audio-toggle-rain')?.addEventListener('click', () => {
+    if (rainPlaying) {
+      stopLibraryRain();
+      showToast('Window rain stopped');
+    } else {
+      startLibraryRain();
+      showToast('Soft rain on the library windows');
+    }
+    updateSoundButtonUI();
+    renderAudioMenu();
+  });
+
+  const rainVolEl = menuAudio.querySelector('#audio-rain-vol');
+  const rainVolLbl = menuAudio.querySelector('#audio-rain-vol-lbl');
+  rainVolEl?.addEventListener('input', () => {
+    const pct = Number(rainVolEl.value);
+    setRainVolume(pct / 100);
+    if (rainVolLbl) rainVolLbl.textContent = `${pct}%`;
+  });
+}
+
+if (menuAudio) {
+  menuAudio.addEventListener('click', (e) => e.stopPropagation());
+}
+
 if (btnSound) {
   updateSoundButtonUI();
-  btnSound.addEventListener('click', () => {
-    soundEnabled = !soundEnabled;
-    updateSoundButtonUI();
-    if (soundEnabled) playCozySound('chime');
-    showToast(soundEnabled ? 'Cozy library foley sounds on' : 'Library sounds muted');
+  btnSound.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const wasOpen = menuAudio && !menuAudio.classList.contains('hidden');
+    closeAllMenus();
+    if (!wasOpen && menuAudio) {
+      renderAudioMenu();
+      menuAudio.classList.remove('hidden');
+    }
   });
 }
 

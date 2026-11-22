@@ -14,7 +14,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Library" />
   <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
-  <link rel="stylesheet" href="/styles.css?v=20261121a" />
+  <link rel="stylesheet" href="/styles.css?v=20261121e" />
 </head>
 <body class="lib-daylight">
   <!-- Full-viewport 2D Illustrated SVG Library Canvas -->
@@ -206,12 +206,16 @@
         </svg>
       </button>
 
-      <!-- Cozy Foley Sound Effects Toggle (Muted by Default) -->
-      <button id="btn-sound" title="Toggle Cozy Sound Effects (paper rustle, wooden shelf thump & chimes — muted by default)" class="storybook-btn rounded-xl p-1.5 cursor-pointer">
-        <svg id="icon-sound" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
-        </svg>
-      </button>
+      <!-- Cozy Foley, Lofi Study Music & Window Rain Soundscape Menu -->
+      <div class="relative">
+        <button id="btn-sound" title="Library Soundscape — Cozy Foley SFX, Lofi Study Music & Window Rain" class="storybook-btn rounded-xl p-1.5 cursor-pointer relative flex items-center justify-center">
+          <svg id="icon-sound" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+          </svg>
+          <span id="sound-music-dot" class="hidden audio-playing-dot absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full" style="background: #f5c663; border: 1.5px solid #3c2516;"></span>
+        </button>
+        <div id="menu-audio" class="hidden absolute right-0 top-full mt-2 w-[294px] max-w-[calc(100vw-24px)] storybook-panel rounded-2xl p-3 z-40 shadow-2xl space-y-2.5"></div>
+      </div>
 
       <!-- Daylight / Candlelight Lamp Toggle -->
       <button id="btn-atmosphere" title="Switch Daylight / Candlelight" class="storybook-btn rounded-xl p-1.5 cursor-pointer">
@@ -399,14 +403,14 @@
 
   <div id="toast" class="hide-toast fixed bottom-4 left-1/2 -translate-x-1/2 z-50 storybook-panel rounded-full px-4 py-2 text-xs font-semibold shadow-lg" style="color: var(--ui-ink);"></div>
 
-  <script defer src="/js/01-constants-dnd.js?v=20261121d"></script>
+  <script defer src="/js/01-constants-dnd.js?v=20261121e"></script>
   <script defer src="/js/02-state-sync.js?v=20261121b"></script>
   <script defer src="/js/03-camera-layout.js?v=20261121b"></script>
   <script defer src="/js/04-map-svg.js?v=20261121b"></script>
-  <script defer src="/js/05-audio-librarians.js?v=20261121b"></script>
-  <script defer src="/js/06-rich-book-dnd.js?v=20261121b"></script>
-  <script defer src="/js/07-inspector-crud.js?v=20261121b"></script>
-  <script defer src="/js/08-search-bootstrap.js?v=20261121b"></script>
+  <script defer src="/js/05-audio-librarians.js?v=20261121e"></script>
+  <script defer src="/js/06-rich-book-dnd.js?v=20261121e"></script>
+  <script defer src="/js/07-inspector-crud.js?v=20261121e"></script>
+  <script defer src="/js/08-search-bootstrap.js?v=20261121e"></script>
   <script defer src="/js/09-market-kroger.js?v=20261121d"></script>
   <script>
     if ('serviceWorker' in navigator && /^https?:$/i.test(window.location.protocol)) {

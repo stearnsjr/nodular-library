@@ -9,12 +9,16 @@ let hallOrganizeMode = false;
 
 const cornerTabletopWrap = document.getElementById('corner-tabletop-wrap');
 function openInspector() {
+  const wasClosed = inspPanel.classList.contains('hidden-panel');
   inspPanel.classList.remove('hidden-panel');
   cornerTabletopWrap?.classList.add('inspector-open-shift');
+  if (wasClosed) playCozySound('drawer-open');
 }
 function closeInspector() {
+  const wasOpen = !inspPanel.classList.contains('hidden-panel');
   inspPanel.classList.add('hidden-panel');
   cornerTabletopWrap?.classList.remove('inspector-open-shift');
+  if (wasOpen) playCozySound('drawer-close');
 }
 
 function openCardIndex(tab = 'colors', shouldFly = false) {
@@ -196,6 +200,7 @@ function reorderStudyTableStack(draggedBookId, targetBookId, placeAboveVisually 
     const insertIdx = placeAboveVisually ? toIdx + 1 : toIdx;
     state.studyStack.splice(insertIdx, 0, draggedBookId);
   }
+  playCozySound('book-slide');
   commitChange();
   showToast('Reordered books on the Study Table');
 }
@@ -593,12 +598,14 @@ function tieBookRibbon(fromBookId, toBookId, label, colorId) {
     showRibbons = true;
     document.getElementById('btn-toggle-ribbons').classList.add('active');
   }
+  playCozySound('ribbon');
   commitChange();
   showToast('Tied cross-reference ribbon between books');
 }
 
 function untieBookRibbon(ribbonId) {
   state.ribbons = state.ribbons.filter(r => r.id !== ribbonId);
+  playCozySound('ribbon');
   commitChange();
   showToast('Untied ribbon');
 }
@@ -934,7 +941,7 @@ function recycleBook(hallId, bookId) {
     originHallTitle,
     payload: deepClone(removed)
   });
-  playCozySound('thump');
+  playCozySound('crumple');
   commitChange();
   showToast(`Recycled ${kind} "${removed.title}" — click Recycle bin to restore`);
 }
@@ -953,7 +960,7 @@ function recycleCartPage(cartPageId) {
     originHallTitle: 'Sorting Pile',
     payload: deepClone(pg)
   });
-  playCozySound('page');
+  playCozySound('crumple');
   commitChange();
   showToast(`Recycled loose paper "${pg.title || 'Untitled'}" — click Recycle bin to restore`);
 }
@@ -987,7 +994,7 @@ function recycleBookPage(hallId, bookId, pageId) {
     originBookTitle: book.title,
     payload: deepClone(pg)
   });
-  playCozySound('page');
+  playCozySound('crumple');
   commitChange();
   showToast(`Recycled page "${pg.title || 'Untitled'}" — click Recycle bin to restore`);
 }
@@ -1093,6 +1100,7 @@ function reorderOrMoveBook(fromHallId, bookId, toHallId, rawInsertIdx, targetShe
     });
     showToast(`Little librarian carried "${book.title}" to ${toInfo.hall.title}!`);
   } else {
+    playCozySound('book-slide');
     showToast(`Reordered "${book.title}"`);
   }
 }
@@ -2017,6 +2025,7 @@ function renderInspector() {
         const label = document.getElementById('new-st-name').value.trim();
         if (!label) return;
         state.stamps.push({ id: uid('st'), label, color });
+        playCozySound('stamp');
         commitChange();
         showToast(`Minted "${label}" stamp`);
       };

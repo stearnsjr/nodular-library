@@ -351,7 +351,7 @@ function openBookCenter(hallId, bookId, pageId = null, forceViewMode = null) {
 
   editingChapterId = null;
   openBookState = { hallId, bookId, chapterId: chosenChapterId, pageId: chosenPage?.id || null };
-  playCozySound('page');
+  playCozySound(isLoosePaper ? 'page' : (isScrollItem(book) ? 'scroll-open' : 'book-open'));
   renderMap();
   renderBreadcrumbs();
   renderOpenBook(false);
@@ -383,16 +383,21 @@ function openReferencePeek(targetBookId = null, targetPageId = null) {
   const ordered = getOrderedBookPages(entry.book);
   const pg = (targetPageId && entry.book.pages.find(p => p.id === targetPageId)) || ordered[0] || null;
   refPeekState = { open: true, bookId: entry.book.id, pageId: pg?.id || null };
+  playCozySound('book-slide');
   renderOpenBook(false);
 }
 
 function closeReferencePeek() {
+  if (refPeekState.open) playCozySound('book-close');
   refPeekState.open = false;
   renderOpenBook(false);
 }
 
 function closeOpenBook() {
   if (!openBookState.bookId) return;
+  const closingLoose = openBookState.hallId === LOOSE_PAPER_MODE_ID;
+  const closingBook = closingLoose ? null : findOpenBookContainer(openBookState.hallId, openBookState.bookId)?.book;
+  playCozySound(closingLoose ? 'page' : (closingBook && isScrollItem(closingBook) ? 'scroll-close' : 'book-close'));
   clearEditorSearchHighlights();
   editingChapterId = null;
   mobileTocOpen = false;
@@ -423,7 +428,7 @@ function selectChapterTab(chapterId) {
   openBookState.chapterId = chapterId;
   const firstInChapter = book.pages.find(p => p.chapterId === chapterId);
   openBookState.pageId = firstInChapter ? firstInChapter.id : null;
-  playCozySound('page');
+  playCozySound('page-flip');
   renderBreadcrumbs();
   renderOpenBook(true);
   setTimeout(() => {
@@ -2709,6 +2714,7 @@ function renderOpenBook(animateTurn = false) {
         if (!Array.isArray(activePage.stamps)) activePage.stamps = [];
         if (activePage.stamps.includes(sid)) activePage.stamps = activePage.stamps.filter(x => x !== sid);
         else activePage.stamps.push(sid);
+        playCozySound('stamp');
         commitChange();
       });
     });
@@ -2720,6 +2726,7 @@ function renderOpenBook(animateTurn = false) {
       state.stamps.push(st);
       if (!Array.isArray(activePage.stamps)) activePage.stamps = [];
       activePage.stamps.push(st.id);
+      playCozySound('stamp');
       commitChange();
       showToast(`Minted & stamped "${name}"`);
     };

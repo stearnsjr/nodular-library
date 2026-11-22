@@ -371,7 +371,8 @@ function rollDndD20(label, modifier) {
   }
   const total = chosen + mod;
   dndLastRoll = { label, total, detail, isCrit: chosen === 20, isFumble: chosen === 1 };
-  playCozySound(chosen === 20 ? 'chime' : 'page');
+  playCozySound('dice');
+  if (chosen === 20) setTimeout(() => playCozySound('chime'), 160);
   return dndLastRoll;
 }
 
@@ -386,6 +387,6 @@ function rollDndDiceExpr(label, exprStr) {
   const sum = rolls.reduce((a, b) => a + b, 0) + bonus;
   const detail = `${count}d${sides} [${rolls.join(', ')}]${bonus ? (bonus > 0 ? ` + ${bonus}` : ` - ${Math.abs(bonus)}`) : ''}`;
   dndLastRoll = { label, total: sum, detail, isCrit: false, isFumble: false };
-  playCozySound('page');
+  playCozySound('dice');
   return dndLastRoll;
 }

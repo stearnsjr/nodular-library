@@ -1361,3 +1361,47 @@ body.lib-candlelight .oak-tabletop-plank {
   }
 }
 
+/* Cozy Soundscape & Lofi Studio controls */
+.cozy-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--ui-border);
+  outline: none;
+  cursor: pointer;
+}
+.cozy-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--ui-accent);
+  border: 2px solid var(--ui-surface-solid);
+  box-shadow: 0 1px 4px var(--ui-shadow);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.cozy-range::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+.cozy-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--ui-accent);
+  border: 2px solid var(--ui-surface-solid);
+  box-shadow: 0 1px 4px var(--ui-shadow);
+  cursor: pointer;
+}
+
+@keyframes audioDotPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: 0.78; }
+}
+.audio-playing-dot {
+  animation: audioDotPulse 1.8s ease-in-out infinite;
+}
+
+
