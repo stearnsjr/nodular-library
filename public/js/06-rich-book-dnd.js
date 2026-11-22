@@ -306,6 +306,7 @@ const pageImagePicker = document.getElementById('page-image-picker');
 
 let listDrag = null;
 let openBookViewMode = 'spread'; // 'spread' | 'single' | 'corkboard'
+let corkboardStampFilter = null;
 let mobileTocOpen = false;
 let refPeekState = { open: false, bookId: null, pageId: null };
 
@@ -327,6 +328,7 @@ function openBookCenter(hallId, bookId, pageId = null, forceViewMode = null) {
   selection = { type: null, hallId: null };
   closeInspector();
   mobileTocOpen = false;
+  if (openBookState.bookId !== bookId) corkboardStampFilter = null;
 
   const ordered = getOrderedBookPages(book);
   let chosenPage = pageId ? book.pages.find(p => p.id === pageId) : null;
@@ -336,16 +338,20 @@ function openBookCenter(hallId, bookId, pageId = null, forceViewMode = null) {
   if (!chosenPage) chosenPage = ordered[0] || null;
   const chosenChapterId = chosenPage ? chosenPage.chapterId : (book.chapters[0]?.id || null);
 
-  const wasScrollOrLoose = openBookState.hallId === LOOSE_PAPER_MODE_ID ||
-    Boolean(openBookState.bookId && isScrollItem(findOpenBookContainer(openBookState.hallId, openBookState.bookId)?.book));
+  const prevBook = openBookState.bookId ? findOpenBookContainer(openBookState.hallId, openBookState.bookId)?.book : null;
+  const wasScrollOrLoose = openBookState.hallId === LOOSE_PAPER_MODE_ID || Boolean(prevBook && isScrollItem(prevBook));
+  const wasBoard = Boolean(prevBook && isProjectBoard(prevBook));
+  const isBoard = !isLoosePaper && isProjectBoard(book);
 
   if (isLoosePaper || isScrollItem(book)) {
     openBookViewMode = 'single';
   } else if (forceViewMode) {
     openBookViewMode = forceViewMode;
+  } else if (isBoard && !pageId) {
+    openBookViewMode = 'corkboard';
   } else if (isMobileViewport()) {
     openBookViewMode = 'single';
-  } else if (wasScrollOrLoose) {
+  } else if (wasScrollOrLoose || (wasBoard && !isBoard)) {
     openBookViewMode = 'spread';
   }
 
@@ -1495,13 +1501,18 @@ function renderOpenBook(animateTurn = false) {
   bookCoverShell.style.background = isScroll ? '#b47b40' : (isLoosePaper ? '#c98e4b' : sw.fill);
   ribbonTiePopEl.classList.add('hidden');
 
+  const isBoard = !isLoosePaper && !isScroll && isProjectBoard(book);
   bookSpreadWrap.classList.toggle('is-single-page-mode', openBookViewMode === 'single');
   bookSpreadWrap.classList.toggle('mobile-toc-open', mobileTocOpen && openBookViewMode === 'single');
   bookSpreadWrap.classList.toggle('is-scroll-mode', isScroll);
   bookSpreadWrap.classList.toggle('is-corkboard-mode', openBookViewMode === 'corkboard');
   document.getElementById('btn-close-book-label').textContent = isScroll
     ? 'Roll Up Scroll'
-    : (isLoosePaper ? 'Close Paper' : (openBookViewMode === 'single' ? 'Close Page' : 'Close Book'));
+    : (isLoosePaper
+      ? 'Close Paper'
+      : (isBoard && openBookViewMode === 'corkboard'
+        ? 'Close Board'
+        : (openBookViewMode === 'single' ? 'Close Page' : 'Close Book')));
 
   renderBookTopFlippers(container);
   renderReferencePeekDrawer();
@@ -1527,88 +1538,260 @@ function renderOpenBook(animateTurn = false) {
   const bookRibbons = (isCart || isLoosePaper) ? [] : state.ribbons.filter(r => r.fromBookId === book.id || r.toBookId === book.id);
   const otherBooks = (isCart || isLoosePaper) ? [] : getAllBooksFlat().filter(e => e.book.id !== book.id);
 
-  // ---- CORKBOARD / INDEX-CARD GRID VIEW (Suggestion 7) ----
+  // ---- HORIZONTAL KANBAN CORKBOARD VIEW (Unified for Project Boards & All Books) ----
   if (openBookViewMode === 'corkboard' && !isLoosePaper) {
     bookLeftEl.innerHTML = '';
+    bookChapterTabsEl.innerHTML = '';
+    const boardStats = isBoard ? getProjectBoardStats(book) : null;
+    const boardPct = (isBoard && boardStats.total > 0) ? Math.round((boardStats.done / boardStats.total) * 100) : 0;
+    const usedStampIds = Array.from(new Set(book.pages.flatMap(p => p.stamps || []))).filter(sid => Boolean(getStamp(sid)));
+    if (corkboardStampFilter && !usedStampIds.includes(corkboardStampFilter)) corkboardStampFilter = null;
+
     bookRightEl.innerHTML = `
-      <div class="corkboard-surface -m-4 sm:-m-5 p-4 sm:p-5 flex-1 flex flex-col overflow-hidden">
-        <div class="flex items-center justify-between gap-2 pb-3 mb-3 border-b flex-wrap" style="border-color:rgba(60,37,22,0.28);">
-          <div class="flex items-center gap-2 min-w-0">
-            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider" style="background:${sw.fill}; color:#fffaf2; border:1.5px solid #3c2516;">Corkboard</span>
-            <span class="font-storybook font-bold text-base truncate" style="color:#2d1a0f;">${esc(book.title)}</span>
-            <span class="text-xs" style="color:#5c3d24;">(${orderedPages.length} page${orderedPages.length === 1 ? '' : 's'} · drag cards across chapters or onto Sorting Pile / Study Table)</span>
+      <div class="corkboard-surface -m-4 sm:-m-5 p-3.5 sm:p-4 flex-1 flex flex-col overflow-hidden">
+        <!-- Board Header Bar -->
+        <div class="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b flex-wrap" style="border-color:rgba(60,37,22,0.28);">
+          <div class="flex items-center gap-2 flex-wrap min-w-0">
+            <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider shrink-0" style="background:${sw.fill}; color:#fffaf2; border:1.6px solid #3c2516;">${isBoard ? 'Project Board' : 'Corkboard'}</span>
+            <input id="cork-book-title" type="text" value="${esc(book.title)}" aria-label="Board Title"
+                   class="font-storybook font-bold text-base bg-transparent border-0 border-b border-transparent focus:border-amber-950/40 outline-none min-w-[120px] max-w-[280px] px-0.5"
+                   style="color:#26150b;" />
+            ${isBoard && boardStats.doneChapterId ? `
+              <div class="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold shrink-0" style="background:rgba(255,250,240,0.82); color:#362215; border:1.5px solid #3c2516;">
+                <span>${boardStats.done}/${boardStats.total} Done</span>
+                <div class="w-14 h-2 rounded-full overflow-hidden" style="background:rgba(90,59,34,0.2);">
+                  <div class="h-full rounded-full transition-all" style="width:${boardPct}%; background:#4f7c54;"></div>
+                </div>
+              </div>
+            ` : `<span class="text-xs font-medium" style="color:#4a2e1a;">(${orderedPages.length} card${orderedPages.length === 1 ? '' : 's'})</span>`}
           </div>
-          <div class="flex items-center gap-1.5">
-            <button id="cork-add-chapter" type="button" class="rounded-xl px-2.5 py-1 text-xs font-bold cursor-pointer" style="background:#fffaf0; color:#362215; border:1.8px solid #3c2516;">+ Chapter</button>
+          <div class="flex items-center gap-1.5 flex-wrap">
+            ${!isCart ? `
+              <button id="cork-pin-book" type="button" title="${book.pinned ? 'Remove from Study Table' : 'Pin to Study Table'}"
+                      class="rounded-xl px-2.5 py-1 text-xs font-bold cursor-pointer"
+                      style="background:${book.pinned ? '#f5c663' : '#fffaf0'}; color:#362215; border:1.8px solid #3c2516;">${book.pinned ? '&#9733; On Table' : '&#9734; + Table'}</button>
+            ` : ''}
+            <button id="cork-toggle-board-type" type="button"
+                    title="${isBoard ? 'Convert back to a regular Book (keeps all columns as chapters)' : 'Make this Book a Project Board (opens straight to Kanban & gets a cork folio spine on the shelf)'}"
+                    class="rounded-xl px-2.5 py-1 text-xs font-bold cursor-pointer"
+                    style="background:#fffaf0; color:#362215; border:1.8px solid #3c2516;">${isBoard ? '&#128214; Make Book' : '&#128204; Make Project Board'}</button>
+            <button id="cork-add-chapter" type="button" class="rounded-xl px-2.5 py-1 text-xs font-bold cursor-pointer" style="background:#fffaf0; color:#362215; border:1.8px solid #3c2516;">+ Column</button>
             <button id="cork-go-single" type="button" class="rounded-xl px-2.5 py-1 text-xs font-bold cursor-pointer" style="background:#fffaf0; color:#362215; border:1.8px solid #3c2516;">&#9634; Single Page</button>
             <button id="cork-go-spread" type="button" class="rounded-xl px-3 py-1 text-xs font-bold cursor-pointer" style="background:${sw.fill}; color:#fffaf2; border:1.8px solid #3c2516;">&#128214; 2-Page Spread</button>
           </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto nice-scroll space-y-4 pr-1">
+        <!-- Stamp Filter Pills (shown when any card on the board has stamps) -->
+        ${usedStampIds.length > 0 ? `
+          <div class="flex items-center gap-1.5 flex-wrap mb-2.5">
+            <span class="text-[11px] font-bold mr-0.5" style="color:#362215;">Stamps:</span>
+            <button type="button" data-cork-stamp-filter="" class="rounded-full px-2.5 py-0.5 text-[11px] font-bold cursor-pointer"
+                    style="background:${!corkboardStampFilter ? '#3c2516' : 'rgba(255,250,240,0.82)'}; color:${!corkboardStampFilter ? '#fffaf0' : '#3c2516'}; border:1.4px solid #3c2516;">All (${orderedPages.length})</button>
+            ${usedStampIds.map(sid => {
+              const st = getStamp(sid);
+              const active = corkboardStampFilter === sid;
+              return `<button type="button" data-cork-stamp-filter="${sid}" class="rounded-full px-2.5 py-0.5 text-[11px] font-bold cursor-pointer"
+                              style="background:${active ? st.color : 'rgba(255,250,240,0.86)'}; color:${active ? '#fffaf0' : st.color}; border:1.4px solid ${st.color};">${esc(st.label)}</button>`;
+            }).join('')}
+          </div>
+        ` : ''}
+
+        <!-- Horizontal Scrollable Kanban Lanes -->
+        <div class="flex-1 min-h-0 flex items-stretch gap-3 overflow-x-auto pb-1.5 nice-scroll">
           ${book.chapters.map((ch, chIdx) => {
             const csw = getSwatch(ch.color || pal[chIdx % pal.length].id);
-            const chPages = book.pages.filter(p => p.chapterId === ch.id);
+            const allChPages = book.pages.filter(p => p.chapterId === ch.id);
+            const chPages = corkboardStampFilter
+              ? allChPages.filter(p => (p.stamps || []).includes(corkboardStampFilter))
+              : allChPages;
+            const isDoneCol = Boolean(isBoard && boardStats.doneChapterId === ch.id);
             return `
-              <div data-cork-chapter="${ch.id}" class="rounded-2xl p-3 transition-all" style="background:rgba(255,250,240,0.46); border:2px dashed rgba(60,37,22,0.32);">
-                <div class="flex items-center justify-between gap-2 mb-2.5">
-                  <span class="inline-flex items-center gap-1.5 font-storybook font-bold text-xs px-2.5 py-0.5 rounded-full" style="background:${csw.fill}; color:#fffaf2; border:1.5px solid #3c2516;">
-                    <span>${esc(ch.title)}</span>
-                    <span class="opacity-80">(${chPages.length})</span>
+              <section data-cork-chapter="${ch.id}" class="kanban-col w-[268px] sm:w-[282px] shrink-0 flex flex-col p-2.5 min-h-0">
+                <div class="flex items-center justify-between gap-1.5 mb-2.5 px-0.5">
+                  <span class="inline-flex items-center gap-1.5 font-storybook font-bold text-xs px-2.5 py-0.5 rounded-full shadow-sm min-w-0" style="background:${csw.fill}; color:#fffaf2; border:1.6px solid #3c2516;">
+                    ${isDoneCol ? '<span>&#10003;</span>' : ''}
+                    <span class="truncate">${esc(ch.title)}</span>
+                    <span class="px-1.5 rounded-full text-[10.5px] shrink-0" style="background:rgba(0,0,0,0.2);">${allChPages.length}</span>
                   </span>
-                  <button type="button" data-cork-add-page="${ch.id}" class="rounded-lg px-2 py-0.5 text-[11px] font-bold cursor-pointer" style="background:#fffaf0; color:${csw.deep}; border:1.5px solid #3c2516;">+ New Card</button>
+                  <div class="flex items-center gap-1 shrink-0">
+                    ${isBoard ? `
+                      <button type="button" data-cork-set-done="${ch.id}"
+                              title="${isDoneCol ? 'Unmark as Done column' : 'Mark as Done column (counts toward shelf progress)'}"
+                              class="rounded-lg px-1.5 py-0.5 text-[10px] font-bold cursor-pointer"
+                              style="background:${isDoneCol ? '#4f7c54' : 'rgba(255,250,240,0.82)'}; color:${isDoneCol ? '#fffaf0' : '#4a301e'}; border:1.4px solid #3c2516;">&#10003;</button>
+                    ` : ''}
+                    <button type="button" data-cork-rename-ch="${ch.id}" title="Rename column"
+                            class="rounded-lg px-1.5 py-0.5 text-[10px] font-bold cursor-pointer"
+                            style="background:rgba(255,250,240,0.82); color:#4a301e; border:1.4px solid #3c2516;">&#9998;</button>
+                  </div>
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+
+                <div class="flex-1 min-h-[60px] overflow-y-auto nice-scroll space-y-2.5 pt-1.5 pr-0.5">
                   ${chPages.map(p => {
                     const todos = countPageTodos(p.html);
                     const pStamps = (p.stamps || []).map(getStamp).filter(Boolean);
-                    const preview = truncate((p.body || '').replace(/\s+/g, ' ').trim(), 95);
+                    const dateProp = (p.properties || []).find(pr => pr.type === 'date' && pr.value);
+                    const preview = truncate((p.body || '').replace(/\s+/g, ' ').trim(), 92);
                     const imgMatch = (p.html || '').match(/<img[^>]+src="([^"]+)"/i);
                     return `
-                      <div data-cork-card="${p.id}" data-cork-card-ch="${ch.id}" draggable="true" class="corkboard-card p-2.5 flex flex-col justify-between gap-1.5">
+                      <div data-cork-card="${p.id}" data-cork-card-ch="${ch.id}" draggable="true" class="corkboard-card p-2.5 pt-3 flex flex-col justify-between gap-1.5">
+                        <span class="corkboard-card-pin" style="background:${csw.fill};"></span>
                         <div>
-                          <div class="flex items-center justify-between gap-1 mb-1">
-                            <span class="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded" style="background:${csw.soft}; color:${csw.deep};">p.${pageNumMap[p.id]}</span>
-                            <div class="flex items-center gap-1">
-                              ${todos.total > 0 ? `<span class="text-[9.5px] font-bold px-1.5 py-0.2 rounded-full" style="background:${todos.done === todos.total ? '#d7ecd9' : 'rgba(130,96,62,0.14)'}; color:${todos.done === todos.total ? '#2f5e36' : '#6c4d35'};">&#10003; ${todos.done}/${todos.total}</span>` : ''}
-                            </div>
+                          <div class="flex items-start justify-between gap-1.5 mb-1">
+                            <div class="font-storybook font-bold text-xs leading-snug" style="color:#2d1a0f;">${esc(p.title || 'Untitled Card')}</div>
+                            <span class="text-[9.5px] font-mono font-bold px-1 py-0.2 rounded shrink-0" style="background:${csw.soft}; color:${csw.deep};">p.${pageNumMap[p.id]}</span>
                           </div>
-                          <div class="font-storybook font-bold text-xs mb-1" style="color:#2d1a0f;">${esc(p.title || 'Untitled Page')}</div>
                           ${imgMatch ? `<img src="${imgMatch[1]}" alt="" class="w-full h-20 object-cover rounded-lg mb-1.5" style="border:1px solid rgba(122,92,68,0.28);" />` : ''}
-                          <p class="text-[11px] leading-snug line-clamp-3" style="color:#6d4f38;">${esc(preview || 'Empty page — click to write')}</p>
+                          ${preview ? `<p class="text-[11px] leading-snug line-clamp-2 mb-1" style="color:#6d4f38;">${esc(preview)}</p>` : ''}
+                          ${(todos.total > 0 || dateProp) ? `
+                            <div class="flex items-center gap-1.5 flex-wrap pt-0.5">
+                              ${todos.total > 0 ? `<span class="text-[10px] font-bold px-1.5 py-0.2 rounded-md" style="background:${todos.done === todos.total ? '#d7ecd9' : 'rgba(130,96,62,0.14)'}; color:${todos.done === todos.total ? '#2f5e36' : '#5e4028'};">&#10003; ${todos.done}/${todos.total}</span>` : ''}
+                              ${dateProp ? `<span class="text-[10px] font-semibold px-1.5 py-0.2 rounded-md" style="background:rgba(90,135,171,0.14); color:#375c7a;">&#128197; ${esc(dateProp.value)}</span>` : ''}
+                            </div>
+                          ` : ''}
                         </div>
                         ${pStamps.length > 0 ? `
-                          <div class="flex items-center gap-1 flex-wrap pt-1 border-t" style="border-color:rgba(122,92,68,0.15);">
-                            ${pStamps.map(st => `<span class="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded" style="background:${st.color}18; color:${st.color}; border:1px solid ${st.color};">${esc(st.label)}</span>`).join('')}
+                          <div class="flex items-center gap-1 flex-wrap pt-1.5 border-t" style="border-color:rgba(122,92,68,0.15);">
+                            ${pStamps.map(st => `<span class="text-[9px] font-bold uppercase px-1.5 py-0.2 rounded" style="background:${st.color}18; color:${st.color}; border:1px dashed ${st.color};">${esc(st.label)}</span>`).join('')}
                           </div>
                         ` : ''}
                       </div>
                     `;
-                  }).join('') || `<div class="text-xs italic py-3 px-2" style="color:#6d4c33;">Drop cards here or click "+ New Card"</div>`}
+                  }).join('') || `<div class="text-xs italic text-center py-5 px-2 rounded-xl" style="color:#5c3d24; background:rgba(255,250,240,0.28);">Drop cards here</div>`}
                 </div>
-              </div>
+
+                <!-- Inline Quick "+ Pin a new card..." Composer -->
+                <form data-cork-quick-add="${ch.id}" class="mt-2.5 flex items-center gap-1.5">
+                  <input type="text" placeholder="+ Pin a new card…" class="flex-1 min-w-0 rounded-xl px-2.5 py-1.5 text-xs outline-none"
+                         style="background:#fffdf7; color:#321f13; border:1.6px solid #5a3b22;" />
+                  <button type="submit" class="rounded-xl px-2.5 py-1.5 text-xs font-bold cursor-pointer shrink-0"
+                          style="background:${csw.fill}; color:#fffaf2; border:1.6px solid #3c2516;">Add</button>
+                </form>
+              </section>
             `;
           }).join('')}
         </div>
       </div>
     `;
 
+    // Render dangling cross-reference silk ribbons beneath the Corkboard too
+    if (!isCart && !isLoosePaper) {
+      const danglingRibbonsHtml = bookRibbons.map(rib => {
+        const otherId = rib.fromBookId === book.id ? rib.toBookId : rib.fromBookId;
+        const otherEntry = findBookEntry(otherId);
+        if (!otherEntry) return '';
+        const rsw = getSwatch(rib.colorId);
+        return `
+          <div class="silk-ribbon-bookmark" style="--ribbon-bg:${rsw.fill}; --ribbon-deep:${rsw.deep};">
+            <button type="button" data-jump-ribbon-book="${otherId}" title="Follow silk ribbon to '${esc(otherEntry.book.title)}' (${esc(otherEntry.hall.title)})"
+                    class="flex items-center gap-1 bg-transparent border-0 p-0 cursor-pointer text-left" style="color:#fffaf2;">
+              <span class="font-storybook font-bold text-[11px] max-w-[130px] truncate">${esc(otherEntry.book.title)}</span>
+              ${rib.label ? `<span class="text-[9.5px] opacity-85 max-w-[74px] truncate">· ${esc(rib.label)}</span>` : ''}
+            </button>
+          </div>
+        `;
+      }).join('');
+      bookBottomRibbonsEl.innerHTML = danglingRibbonsHtml;
+      bookBottomRibbonsEl.querySelectorAll('[data-jump-ribbon-book]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const target = findBookEntry(btn.dataset.jumpRibbonBook);
+          if (target) openBookCenter(target.hall.id, target.book.id);
+        });
+      });
+    } else {
+      bookBottomRibbonsEl.innerHTML = '';
+    }
+
+    // Bind Corkboard controls
+    const titleInp = document.getElementById('cork-book-title');
+    titleInp?.addEventListener('input', (e) => {
+      book.title = e.target.value;
+      persistState();
+      renderMap();
+      renderBreadcrumbs();
+    });
+    titleInp?.addEventListener('change', () => pushHistory());
+
+    document.getElementById('cork-pin-book')?.addEventListener('click', () => {
+      togglePinBook(hall.id, book.id);
+    });
+
+    document.getElementById('cork-toggle-board-type')?.addEventListener('click', () => {
+      if (isProjectBoard(book)) {
+        delete book.projectBoard;
+        commitChange();
+        showToast(`Converted "${book.title}" back to a regular Book`);
+      } else {
+        book.projectBoard = normalizeProjectBoard({}, book.chapters);
+        commitChange();
+        showToast(`"${book.title}" is now a Project Board!`);
+      }
+    });
+
     document.getElementById('cork-add-chapter')?.addEventListener('click', () => createChapter(hall.id, book.id));
     document.getElementById('cork-go-single')?.addEventListener('click', () => { openBookViewMode = 'single'; renderOpenBook(false); });
     document.getElementById('cork-go-spread')?.addEventListener('click', () => { openBookViewMode = 'spread'; renderOpenBook(false); });
-    bookRightEl.querySelectorAll('[data-cork-add-page]').forEach(btn => {
+
+    bookRightEl.querySelectorAll('[data-cork-stamp-filter]').forEach(btn => {
       btn.addEventListener('click', () => {
-        openBookViewMode = 'spread';
-        createPage(hall.id, book.id, btn.dataset.corkAddPage);
+        corkboardStampFilter = btn.dataset.corkStampFilter || null;
+        renderOpenBook(false);
       });
     });
+
+    bookRightEl.querySelectorAll('[data-cork-set-done]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cid = btn.dataset.corkSetDone;
+        if (!book.projectBoard) book.projectBoard = createDefaultProjectBoardData(null);
+        book.projectBoard.doneChapterId = book.projectBoard.doneChapterId === cid ? null : cid;
+        commitChange();
+        const ch = book.chapters.find(c => c.id === cid);
+        showToast(book.projectBoard.doneChapterId ? `"${ch?.title || 'Column'}" marked as Done column` : 'Cleared Done column');
+      });
+    });
+
+    bookRightEl.querySelectorAll('[data-cork-rename-ch]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ch = book.chapters.find(c => c.id === btn.dataset.corkRenameCh);
+        if (!ch) return;
+        const next = prompt('Rename column:', ch.title);
+        if (next && next.trim()) {
+          ch.title = next.trim();
+          commitChange();
+        }
+      });
+    });
+
+    bookRightEl.querySelectorAll('[data-cork-quick-add]').forEach(form => {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const cid = form.dataset.corkQuickAdd;
+        const inp = form.querySelector('input');
+        const cardTitle = (inp?.value || '').trim();
+        if (!cardTitle) return;
+        const newPage = {
+          id: uid('p'),
+          chapterId: cid,
+          title: cardTitle,
+          stamps: [],
+          properties: [],
+          body: '',
+          html: ''
+        };
+        book.pages.push(newPage);
+        playCozySound('page');
+        commitChange();
+        showToast(`Pinned "${cardTitle}"`);
+      });
+    });
+
     bookRightEl.querySelectorAll('[data-cork-card]').forEach(card => {
       const pid = card.dataset.corkCard;
       const cid = card.dataset.corkCardCh;
       card.addEventListener('click', () => {
         openBookState.pageId = pid;
         openBookState.chapterId = cid;
-        openBookViewMode = 'spread';
+        openBookViewMode = isMobileViewport() ? 'single' : 'spread';
         renderOpenBook(true);
       });
       card.addEventListener('dragstart', (e) => {
@@ -1629,9 +1812,13 @@ function renderOpenBook(animateTurn = false) {
         if (!listDrag || listDrag.type !== 'page' || listDrag.id === pid) return;
         e.preventDefault(); e.stopPropagation();
         const draggedId = listDrag.id; listDrag = null; clearDropMarkers(document);
+        const movedPage = book.pages.find(p => p.id === draggedId);
+        const prevCh = movedPage?.chapterId;
         reorderOrMovePage(book, draggedId, cid, pid, false);
+        if (isBoard && book.projectBoard?.doneChapterId === cid && prevCh !== cid) playCozySound('chime');
       });
     });
+
     bookRightEl.querySelectorAll('[data-cork-chapter]').forEach(sec => {
       const cid = sec.dataset.corkChapter;
       sec.addEventListener('dragover', (e) => {
@@ -1644,7 +1831,10 @@ function renderOpenBook(animateTurn = false) {
         if (!listDrag || listDrag.type !== 'page' || e.target.closest('[data-cork-card]')) return;
         e.preventDefault();
         const draggedId = listDrag.id; listDrag = null; clearDropMarkers(document);
+        const movedPage = book.pages.find(p => p.id === draggedId);
+        const prevCh = movedPage?.chapterId;
         reorderOrMovePage(book, draggedId, cid, null, true);
+        if (isBoard && book.projectBoard?.doneChapterId === cid && prevCh !== cid) playCozySound('chime');
       });
     });
     return;
@@ -1700,9 +1890,9 @@ function renderOpenBook(animateTurn = false) {
     <div class="relative flex items-center justify-between gap-1.5 pb-1.5 mb-2 border-b flex-wrap" style="border-color:rgba(122,92,68,0.22);">
       <span class="font-storybook font-bold text-xs uppercase tracking-wider" style="color:#6d4c33;">Contents</span>
       <div class="flex items-center gap-1 flex-wrap">
-        <button id="btn-open-corkboard" type="button" title="Spread pages as a 2D Corkboard of index cards"
-                class="rounded-lg px-2 py-0.5 text-[10.5px] font-bold cursor-pointer bg-amber-900/10 hover:bg-amber-900/20 border border-amber-900/20"
-                style="color:#4a301e;">&#8862; Corkboard</button>
+        <button id="btn-open-corkboard" type="button" title="${isBoard ? 'Return to Kanban Project Board view' : 'Spread pages as a horizontal Kanban Corkboard'}"
+                class="rounded-lg px-2 py-0.5 text-[10.5px] font-bold cursor-pointer ${isBoard ? '' : 'bg-amber-900/10 hover:bg-amber-900/20 border border-amber-900/20'}"
+                style="${isBoard ? `background:${sw.fill}; color:#fffaf2; border:1.5px solid #3c2516;` : 'color:#4a301e;'}">${isBoard ? '&larr; Project Board' : '&#8862; Corkboard'}</button>
         <button id="btn-open-tpl-picker" type="button" title="Create a new page from a saved Page Template"
                 class="rounded-lg px-2 py-0.5 text-[10.5px] font-bold cursor-pointer bg-amber-900/10 hover:bg-amber-900/20 border border-amber-900/20"
                 style="color:#4a301e;">+ Template</button>

@@ -188,9 +188,12 @@ function renderBookshelfBaySVG(bayGeom, ink, wallColor, wallHighlight, glow) {
     `;
 
     const isScroll = isScrollItem(book);
-    const textCenterY = shelfFloorY - h / 2 - (isScroll ? 0 : 2.5);
+    const isBoard = !isScroll && isProjectBoard(book);
+    const boardStats = isBoard ? getProjectBoardStats(book) : null;
+    const textCenterY = shelfFloorY - h / 2 - (isScroll ? 0 : (isBoard ? 1 : 2.5));
     const lineSpacing = 11.2;
     const startXOffset = -((lines.length - 1) * lineSpacing) / 2;
+    const lightBgSpine = isScroll || isBoard;
     const titleLinesSvg = lines.map((ln, lIdx) => {
       const lx = startXOffset + lIdx * lineSpacing;
       return `
@@ -198,14 +201,20 @@ function renderBookshelfBaySVG(bayGeom, ink, wallColor, wallHighlight, glow) {
               transform="rotate(-90 ${lx.toFixed(1)} ${textCenterY.toFixed(1)})"
               text-anchor="middle" dominant-baseline="central"
               font-size="${numLines >= 3 ? 9.4 : 10.0}" font-weight="700" font-family="Georgia, serif"
-              fill="${isScroll ? '#3b2413' : '#fffaf2'}" stroke="${isScroll ? '#fff8e8' : bsw.deep}" stroke-width="${isScroll ? 2.2 : 2.4}" paint-order="stroke"
+              fill="${lightBgSpine ? '#2d1a0f' : '#fffaf2'}" stroke="${lightBgSpine ? '#fff8e8' : bsw.deep}" stroke-width="${lightBgSpine ? 2.2 : 2.4}" paint-order="stroke"
               letter-spacing="0.15">${esc(ln)}</text>
       `;
     }).join('');
 
     const isCharBook = isCharacterBook(book);
     const isMktBook = isMarketLedger(book);
-    const tipText = `${isScroll ? 'Scroll · ' : (isCharBook ? 'D&D Character · ' : (isMktBook ? 'Market Ledger · ' : ''))}${truncate(book.title, 28)}${book.pinned ? ' ★ Study Table' : ''} · Click to ${isScroll ? 'unroll' : 'open'}, drag to move`;
+    const tipPrefix = isScroll
+      ? 'Scroll · '
+      : (isBoard
+        ? 'Project Board · '
+        : (isCharBook ? 'D&D Character · ' : (isMktBook ? 'Market Ledger · ' : '')));
+    const tipProgress = isBoard && boardStats.doneChapterId ? ` (${boardStats.done}/${boardStats.total})` : '';
+    const tipText = `${tipPrefix}${truncate(book.title, 26)}${tipProgress}${book.pinned ? ' ★ Study Table' : ''} · Click to ${isScroll ? 'unroll' : 'open'}, drag to move`;
     const tipW = Math.max(146, tipText.length * 5.6 + 20);
     const inTransit = isBookCarriedByLibrarian(book.id);
 
@@ -231,6 +240,11 @@ function renderBookshelfBaySVG(bayGeom, ink, wallColor, wallHighlight, glow) {
     const scrollBodyTop = shelfFloorY - h + 7;
     const scrollBodyBot = shelfFloorY - 4;
     const scrollMidY = (scrollBodyTop + scrollBodyBot) / 2;
+    const boardTop = shelfFloorY - h;
+    const boardPct = (isBoard && boardStats.total > 0) ? Math.round((boardStats.done / boardStats.total) * 100) : 0;
+    const boardBadgeText = isBoard
+      ? (boardStats.doneChapterId ? `${boardStats.done}/${boardStats.total}` : `${boardStats.total}`)
+      : '';
     const itemArtSvg = isScroll
       ? `
         <!-- Rolled Parchment Scroll with Turned Wooden Dowels & Colored Silk Ribbon -->
@@ -253,6 +267,35 @@ function renderBookshelfBaySVG(bayGeom, ink, wallColor, wallHighlight, glow) {
         <circle cx="${(shw - 1).toFixed(1)}" cy="${scrollMidY.toFixed(1)}" r="2.3" fill="${bsw.deep}" stroke="${ink}" stroke-width="1" />
         ${book.pinned ? `<circle cx="0" cy="${(scrollBodyTop + 6).toFixed(1)}" r="3.4" fill="#ffd85a" stroke="${ink}" stroke-width="1.1" />` : ''}
         ${titleLinesSvg}
+      `
+      : isBoard
+      ? `
+        <!-- Framed Wooden / Corkboard Project Board Folio -->
+        ${isBookMatch ? `<rect x="${(-hw - 1.5).toFixed(1)}" y="${(boardTop - 1.5).toFixed(1)}" width="${(w + 3).toFixed(1)}" height="${(h + 3).toFixed(1)}" rx="6" fill="none" stroke="${glowOuter}" stroke-width="8" filter="url(#searchGlow)" class="search-glow-aura" />` : ''}
+        <rect x="${(-hw).toFixed(1)}" y="${boardTop.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="5"
+              fill="${bsw.fill}" stroke="${isBookMatch ? glowCore : (isOpen ? '#f5c663' : ink)}" stroke-width="${isBookMatch ? 2.9 : (isOpen ? 2.6 : 2)}" />
+        <!-- Inner Corkboard Strip -->
+        <rect x="${(-hw + 3.4).toFixed(1)}" y="${(boardTop + 14).toFixed(1)}" width="${Math.max(8, w - 6.8).toFixed(1)}" height="${Math.max(20, h - 32).toFixed(1)}" rx="2.5"
+              fill="url(#corkMini)" stroke="${ink}" stroke-width="1.1" />
+        <!-- Brass Corner Clasps -->
+        <rect x="${(-hw - 0.8).toFixed(1)}" y="${(boardTop + 3).toFixed(1)}" width="4.4" height="6.5" rx="1.2" fill="#e6b655" stroke="${ink}" stroke-width="0.9" />
+        <rect x="${(hw - 3.6).toFixed(1)}" y="${(boardTop + 3).toFixed(1)}" width="4.4" height="6.5" rx="1.2" fill="#e6b655" stroke="${ink}" stroke-width="0.9" />
+        <rect x="${(-hw - 0.8).toFixed(1)}" y="${(shelfFloorY - 11.5).toFixed(1)}" width="4.4" height="6.5" rx="1.2" fill="#e6b655" stroke="${ink}" stroke-width="0.9" />
+        <rect x="${(hw - 3.6).toFixed(1)}" y="${(shelfFloorY - 11.5).toFixed(1)}" width="4.4" height="6.5" rx="1.2" fill="#e6b655" stroke="${ink}" stroke-width="0.9" />
+        <!-- Mini 3-Column Pushpin Emblem at Top -->
+        <g transform="translate(0, ${(boardTop + 8.2).toFixed(1)})">
+          <rect x="-5.5" y="-3.3" width="11" height="6.6" rx="1.5" fill="#fffaf0" stroke="${ink}" stroke-width="0.95" />
+          <line x1="-1.8" y1="-3.3" x2="-1.8" y2="3.3" stroke="${ink}" stroke-width="0.8" />
+          <line x1="1.8" y1="-3.3" x2="1.8" y2="3.3" stroke="${ink}" stroke-width="0.8" />
+          <circle cx="0" cy="-3.3" r="1.6" fill="#c96843" stroke="${ink}" stroke-width="0.75" />
+        </g>
+        ${book.pinned ? `<circle cx="${(hw - 4.5).toFixed(1)}" cy="${(boardTop + 2.5).toFixed(1)}" r="3.4" fill="#ffd85a" stroke="${ink}" stroke-width="1.1" />` : ''}
+        ${titleLinesSvg}
+        <!-- Live Progress Pill at Bottom of Spine -->
+        <rect x="${(-hw + 3).toFixed(1)}" y="${(shelfFloorY - 15.5).toFixed(1)}" width="${Math.max(12, w - 6).toFixed(1)}" height="11.5" rx="4"
+              fill="${isBookMatch ? glowCore : (isOpen ? '#f5c663' : '#fffaf0')}" stroke="${ink}" stroke-width="1.1" />
+        ${boardStats.doneChapterId ? `<rect x="${(-hw + 4.4).toFixed(1)}" y="${(shelfFloorY - 6.8).toFixed(1)}" width="${Math.max(0, ((Math.max(12, w - 6) - 2.8) * boardPct) / 100).toFixed(1)}" height="1.9" rx="0.9" fill="#4f7c54" />` : ''}
+        <text x="0" y="${(shelfFloorY - 8.2).toFixed(1)}" text-anchor="middle" font-size="6.9" font-weight="800" fill="#352012">${boardBadgeText}</text>
       `
       : `
         ${isBookMatch ? `<path d="${spinePath}" fill="none" stroke="${glowOuter}" stroke-width="8" stroke-linejoin="round" filter="url(#searchGlow)" class="search-glow-aura" />` : ''}
@@ -990,25 +1033,38 @@ function renderCornerTabletop() {
     studyStackEl.innerHTML = pinned.map((entry, idx) => {
       const b = entry.book;
       const isSc = isScrollItem(b);
+      const isBoard = !isSc && isProjectBoard(b);
+      const bStats = isBoard ? getProjectBoardStats(b) : null;
       const bsw = getSwatch(b.color || entry.hall.color);
       const isOpen = openBookState.bookId === b.id;
       const isGlow = doesBookMatchActiveFilter(b);
       const staggerX = ((idx % 2 === 0 ? -1 : 1) * ((idx % 3) * 2.2)).toFixed(1);
       const pagesOnLeft = idx % 2 === 1;
+      const bgStyle = isSc
+        ? '#f6e6c4'
+        : (isBoard
+          ? `linear-gradient(90deg, ${bsw.fill} 0%, ${bsw.fill} 12%, #d3a66e 12%, #d3a66e 88%, ${bsw.fill} 88%, ${bsw.fill} 100%)`
+          : bsw.fill);
+      const isLightCard = isSc || isBoard;
+      const countBadge = isSc
+        ? 'Scroll'
+        : (isBoard
+          ? (bStats.doneChapterId ? `${bStats.done}/${bStats.total}` : `${bStats.total}c`)
+          : `${b.pages.length}p`);
       return `
         <div class="study-stack-book ${isOpen ? 'is-open-book' : ''} ${isGlow ? 'is-glow-match' : ''}"
              draggable="true"
              data-study-stack-idx="${idx}"
              data-study-stack-hall="${entry.hall.id}"
              data-study-stack-book="${b.id}"
-             title="Open ${isSc ? 'Scroll' : 'Book'} &quot;${esc(b.title)}&quot; (${esc(entry.hall.title)}) · Drag to reorder stack, or drag to Recycle!"
-             style="background:${isSc ? '#f6e6c4' : bsw.fill}; transform:translateX(${staggerX}px); z-index:${idx + 1}; --glow-ring:${glow.glowOuter};">
+             title="Open ${isSc ? 'Scroll' : (isBoard ? 'Project Board' : 'Book')} &quot;${esc(b.title)}&quot; (${esc(entry.hall.title)}) · Drag to reorder stack, or drag to Recycle!"
+             style="background:${bgStyle}; transform:translateX(${staggerX}px); z-index:${idx + 1}; --glow-ring:${glow.glowOuter};">
           ${pagesOnLeft ? `<span class="study-book-pages-trim" style="border-left:0; border-right:1.5px solid #3c2516; border-radius:4px 2px 2px 4px;"></span>` : ''}
-          <span class="w-1 self-stretch rounded-full shrink-0" style="background:${isSc ? bsw.fill : bsw.rugEdge}; opacity:0.92;"></span>
+          <span class="w-1 self-stretch rounded-full shrink-0" style="background:${isLightCard ? bsw.fill : bsw.rugEdge}; opacity:0.92;"></span>
           <span class="font-storybook font-bold text-[11.2px] leading-[1.18] flex-1 min-w-0 break-words py-0.5"
-                style="color:${isSc ? '#352012' : '#fffaf2'}; ${isSc ? '' : `text-shadow:0 1px 2px ${bsw.deep}, 0 0 3px ${bsw.deep};`}">${esc(b.title)}</span>
+                style="color:${isLightCard ? '#2d1a0f' : '#fffaf2'}; ${isLightCard ? 'text-shadow:0 1px 0 rgba(255,250,240,0.65);' : `text-shadow:0 1px 2px ${bsw.deep}, 0 0 3px ${bsw.deep};`}">${esc(b.title)}</span>
           <span class="text-[9.5px] font-extrabold px-1.5 py-0.2 rounded-full shrink-0"
-                style="background:${isSc ? bsw.fill : 'rgba(28,14,6,0.32)'}; color:#fff8e8;">${isSc ? 'Scroll' : `${b.pages.length}p`}</span>
+                style="background:${isBoard ? '#fffaf0' : (isSc ? bsw.fill : 'rgba(28,14,6,0.32)')}; color:${isBoard ? '#352012' : '#fff8e8'}; ${isBoard ? 'border:1px solid #3c2516;' : ''}">${countBadge}</span>
           ${hasAnyModalOpen && !isOpen ? `
             <button type="button" data-study-stack-peek="${b.id}" title="Peek / Compare side-by-side next to your open page"
                     class="px-1.5 py-0.2 rounded-full text-[9.5px] font-extrabold cursor-pointer bg-amber-100/90 hover:bg-amber-200 border border-amber-950/40 shrink-0"

@@ -81,6 +81,9 @@ function normalizeLibraryState(lib) {
       if (!c.id) c.id = uid('ch');
       if (!validPalette.has(c.color)) c.color = book.color;
     });
+    if (book.projectBoard && typeof book.projectBoard === 'object') {
+      book.projectBoard = normalizeProjectBoard(book.projectBoard, book.chapters);
+    }
     const validChIds = new Set(book.chapters.map(c => c.id));
     const defCh = book.chapters[0].id;
     book.pages.forEach(p => {

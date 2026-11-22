@@ -924,7 +924,7 @@ body.lib-candlelight .oak-tabletop-plank {
   .library-cat-body, .library-cat-tail, .library-cat-z1, .library-cat-z2 { animation: none !important; }
 }
 
-/* Corkboard / Storyboard Index-Card Grid View inside Open Book */
+/* Corkboard / Kanban Index-Card View inside Open Book */
 #book-spread-wrap.is-corkboard-mode #open-book-left,
 #book-spread-wrap.is-corkboard-mode #book-center-gutter {
   display: none !important;
@@ -934,21 +934,59 @@ body.lib-candlelight .oak-tabletop-plank {
 }
 .corkboard-surface {
   background:
-    radial-gradient(rgba(82, 48, 22, 0.15) 1px, transparent 1px),
+    radial-gradient(rgba(82, 48, 22, 0.16) 1px, transparent 1px),
     linear-gradient(180deg, #d7b281 0%, #c89f6b 100%);
   background-size: 14px 14px, 100% 100%;
 }
+body.lib-candlelight .corkboard-surface {
+  background:
+    radial-gradient(rgba(30, 16, 6, 0.28) 1px, transparent 1px),
+    linear-gradient(180deg, #8b653d 0%, #6d4c2c 100%);
+  background-size: 14px 14px, 100% 100%;
+}
+.kanban-col {
+  background: rgba(255, 250, 240, 0.56);
+  border: 2px dashed rgba(60, 37, 22, 0.34);
+  border-radius: 18px;
+  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+body.lib-candlelight .kanban-col {
+  background: rgba(34, 22, 14, 0.44);
+  border-color: rgba(244, 230, 206, 0.24);
+}
+.kanban-col.drop-into {
+  background: rgba(245, 198, 99, 0.34) !important;
+  border-color: #c96843 !important;
+  border-style: solid !important;
+  box-shadow: 0 0 0 3px rgba(201, 104, 67, 0.24);
+}
 .corkboard-card {
+  position: relative;
   background: linear-gradient(180deg, #fffdf7 0%, #f7ebd3 100%);
   border: 2px solid #5a3b22;
-  border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(34, 18, 8, 0.22);
-  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.16s ease;
+  border-radius: 13px;
+  box-shadow: 0 4px 10px rgba(34, 18, 8, 0.2);
+  transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.16s ease, opacity 0.15s ease;
   cursor: pointer;
 }
 .corkboard-card:hover {
-  transform: translateY(-3px) rotate(-0.5deg);
-  box-shadow: 0 8px 18px rgba(34, 18, 8, 0.3);
+  transform: translateY(-2.5px) rotate(-0.4deg);
+  box-shadow: 0 8px 18px rgba(34, 18, 8, 0.28);
+}
+.corkboard-card.drop-before {
+  box-shadow: 0 -4px 0 0 #c96843, 0 4px 10px rgba(34, 18, 8, 0.22);
+}
+.corkboard-card-pin {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 11px;
+  height: 11px;
+  border-radius: 9999px;
+  border: 1.6px solid #3c2516;
+  box-shadow: 0 1.5px 3px rgba(24, 12, 4, 0.35);
+  pointer-events: none;
 }
 
 /* Top Outer Rim Book Flipper Tabs (Hall Books & Study Table Books) */

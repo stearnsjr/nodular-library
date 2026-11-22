@@ -163,6 +163,35 @@ function isCharacterBook(item) {
 function isMarketLedger(item) {
   return Boolean(item && item.marketLedger && typeof item.marketLedger === 'object');
 }
+function isProjectBoard(item) {
+  return Boolean(item && item.projectBoard && typeof item.projectBoard === 'object');
+}
+
+function createDefaultProjectBoardData(doneChapterId = null) {
+  return {
+    doneChapterId: doneChapterId || null
+  };
+}
+
+function normalizeProjectBoard(raw, chapters = []) {
+  const validIds = new Set((chapters || []).map(c => c.id));
+  let doneId = (raw && typeof raw.doneChapterId === 'string' && validIds.has(raw.doneChapterId))
+    ? raw.doneChapterId
+    : null;
+  if (!doneId && Array.isArray(chapters) && chapters.length > 0) {
+    const doneGuess = chapters.find(c => /\b(done|complete|completed|finished|shipped)\b/i.test(c.title || ''));
+    if (doneGuess) doneId = doneGuess.id;
+  }
+  return { doneChapterId: doneId };
+}
+
+function getProjectBoardStats(book) {
+  if (!book || !Array.isArray(book.pages)) return { done: 0, total: 0, doneChapterId: null };
+  const doneChapterId = book.projectBoard?.doneChapterId || null;
+  const total = book.pages.length;
+  const done = doneChapterId ? book.pages.filter(p => p.chapterId === doneChapterId).length : 0;
+  return { done, total, doneChapterId };
+}
 
 function createDefaultMarketLedgerData(initialListName = 'Weekly Groceries') {
   const listId = uid('ml');
