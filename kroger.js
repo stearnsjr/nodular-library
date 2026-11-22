@@ -270,8 +270,15 @@ function createKrogerService({ dataDir }) {
     if (!raw || typeof raw !== 'object') return null;
     const item = Array.isArray(raw.items) && raw.items.length > 0 ? raw.items[0] : {};
     const priceObj = item.price || {};
-    const regular = typeof priceObj.regular === 'number' && priceObj.regular > 0 ? priceObj.regular : null;
-    const promoRaw = typeof priceObj.promo === 'number' && priceObj.promo > 0 ? priceObj.promo : null;
+    const natPriceObj = item.nationalPrice || {};
+    const pickPos = (...vals) => {
+      for (const v of vals) {
+        if (typeof v === 'number' && !Number.isNaN(v) && v > 0) return v;
+      }
+      return null;
+    };
+    const regular = pickPos(priceObj.regular, natPriceObj.regular, priceObj.regularPerUnitEstimate, natPriceObj.regularPerUnitEstimate);
+    const promoRaw = pickPos(priceObj.promo, natPriceObj.promo, priceObj.promoPerUnitEstimate, natPriceObj.promoPerUnitEstimate);
     const promo = promoRaw !== null && (regular === null || promoRaw < regular) ? promoRaw : null;
 
     const aisleObj = Array.isArray(raw.aisleLocations) && raw.aisleLocations.length > 0 ? raw.aisleLocations[0] : null;

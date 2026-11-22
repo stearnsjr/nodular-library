@@ -202,6 +202,7 @@ function normalizeMarketLedger(raw) {
                   qty: Math.max(1, Math.min(99, parseInt(it.qty, 10) || 1)),
                   checked: Boolean(it.checked),
                   note: typeof it.note === 'string' ? it.note : '',
+                  deal: typeof it.deal === 'string' ? it.deal : '',
                   upc: typeof it.upc === 'string' ? it.upc : '',
                   productId: typeof it.productId === 'string' ? it.productId : '',
                   price: typeof it.price === 'number' && !Number.isNaN(it.price) ? it.price : null,

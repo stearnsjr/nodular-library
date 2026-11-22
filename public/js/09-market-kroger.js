@@ -33,6 +33,7 @@ const krogerState = {
   urlResult: null,
   refreshing: false,
   syncingCart: false,
+  editingDealItemId: null,
   // Quick toolbar drawer selection
   drawerBookId: null
 };
@@ -78,36 +79,157 @@ function getActiveMarketList(ledger) {
   return ledger.lists.find(l => l.id === ledger.activeListId) || ledger.lists[0];
 }
 
+function parseMarketDeal(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+
+  // Multi-buy: "4/$10", "4 / $10.00", "4 for $10", "4 for 10"
+  const multi = s.match(/^(\d+)\s*(?:\/|for)\s*\$?\s*(\d+(?:\.\d{1,2})?)$/i);
+  if (multi) {
+    const count = parseInt(multi[1], 10);
+    const total = parseFloat(multi[2]);
+    if (count >= 2 && total > 0) {
+      const totalStr = Number.isInteger(total) ? String(total) : total.toFixed(2);
+      return { type: 'multibuy', count, total, label: `${count}/$${totalStr}` };
+    }
+  }
+
+  // BOGO: "BOGO", "Buy 1 Get 1"
+  if (/^(?:bogo|buy\s*1\s*get\s*1(?:\s*free)?)$/i.test(s)) {
+    return { type: 'bogo', label: 'BOGO' };
+  }
+
+  // Dollar off per item: "-$1", "-$1.50", "$1 off", "1.50 off"
+  const off = s.match(/^(?:-\s*\$?\s*(\d+(?:\.\d{1,2})?)|\$?\s*(\d+(?:\.\d{1,2})?)\s*off)$/i);
+  if (off) {
+    const amt = parseFloat(off[1] || off[2]);
+    if (amt > 0) {
+      const amtStr = Number.isInteger(amt) ? String(amt) : amt.toFixed(2);
+      return { type: 'off', amount: amt, label: `-$${amtStr}` };
+    }
+  }
+
+  return null;
+}
+
+function getItemBaseUnitPrice(it) {
+  if (typeof it.promo === 'number' && it.promo > 0) return it.promo;
+  if (typeof it.price === 'number' && it.price > 0) return it.price;
+  return null;
+}
+
 function computeMarketListStats(list) {
   let total = 0;
   let savings = 0;
   let totalQty = 0;
   let checkedRows = 0;
   let uncheckedKroger = 0;
+  const itemTotals = {};
   const items = list?.items || [];
+
+  // Pool items that share a multi-buy deal + brand (for Mix & Match, e.g. 2x Lean Cuisine Alfredo + 2x Lean Cuisine Chicken @ 4/$10)
+  const multibuyPools = new Map();
   for (const it of items) {
     const q = Math.max(1, Number(it.qty) || 1);
     totalQty += q;
     if (it.checked) checkedRows += 1;
     else if (it.upc || it.productId) uncheckedKroger += 1;
-    const unit = (typeof it.promo === 'number' && it.promo > 0)
-      ? it.promo
-      : ((typeof it.price === 'number' && it.price > 0) ? it.price : null);
-    if (unit !== null) {
-      total += unit * q;
-      if (typeof it.promo === 'number' && typeof it.price === 'number' && it.price > it.promo) {
-        savings += (it.price - it.promo) * q;
+
+    const deal = parseMarketDeal(it.deal);
+    if (deal && deal.type === 'multibuy') {
+      const brandKey = (it.brand || it.name || it.id).trim().toLowerCase();
+      const poolKey = `${brandKey}::${deal.label}`;
+      if (!multibuyPools.has(poolKey)) {
+        multibuyPools.set(poolKey, { deal, items: [], totalPoolQty: 0 });
       }
+      const pool = multibuyPools.get(poolKey);
+      pool.items.push(it);
+      pool.totalPoolQty += q;
     }
   }
+
+  // First compute pooled multi-buy deals
+  for (const pool of multibuyPools.values()) {
+    const { deal, items: poolItems, totalPoolQty } = pool;
+    const bundles = Math.floor(totalPoolQty / deal.count);
+    const remainder = totalPoolQty % deal.count;
+    const avgUnit = (() => {
+      const priced = poolItems.map(getItemBaseUnitPrice).filter(v => v !== null);
+      if (priced.length === 0) return deal.total / deal.count;
+      return priced.reduce((a, b) => a + b, 0) / priced.length;
+    })();
+    const poolFinalTotal = bundles * deal.total + remainder * avgUnit;
+    const effectiveUnit = poolFinalTotal / totalPoolQty;
+
+    for (const it of poolItems) {
+      const q = Math.max(1, Number(it.qty) || 1);
+      const regUnit = (typeof it.price === 'number' && it.price > 0) ? it.price : getItemBaseUnitPrice(it);
+      const lineTotal = +(effectiveUnit * q).toFixed(2);
+      const regLine = regUnit !== null ? regUnit * q : null;
+      const itemSavings = regLine !== null && regLine > lineTotal ? +(regLine - lineTotal).toFixed(2) : 0;
+      const met = bundles >= 1;
+      const needMore = remainder > 0 ? (deal.count - remainder) : 0;
+      itemTotals[it.id] = {
+        lineTotal,
+        regularTotal: regLine,
+        savings: itemSavings,
+        deal,
+        dealMet: met,
+        dealStatus: met
+          ? (remainder > 0 ? `${deal.label} ✓ (+${needMore} for next)` : `${deal.label} ✓`)
+          : `${deal.label} (${totalPoolQty}/${deal.count})`
+      };
+      total += lineTotal;
+      savings += itemSavings;
+    }
+  }
+
+  // Compute remaining items (standard, promo, BOGO, $ off)
+  for (const it of items) {
+    if (itemTotals[it.id]) continue;
+    const q = Math.max(1, Number(it.qty) || 1);
+    const unit = getItemBaseUnitPrice(it);
+    const regUnit = (typeof it.price === 'number' && it.price > 0) ? it.price : unit;
+    const deal = parseMarketDeal(it.deal);
+
+    if (unit === null) {
+      itemTotals[it.id] = { lineTotal: null, regularTotal: null, savings: 0, deal, dealMet: false, dealStatus: deal ? deal.label : '' };
+      continue;
+    }
+
+    let lineTotal = unit * q;
+    let dealMet = false;
+    let dealStatus = '';
+
+    if (deal && deal.type === 'bogo') {
+      const paidQty = Math.ceil(q / 2);
+      const baseForBogo = regUnit ?? unit;
+      lineTotal = paidQty * baseForBogo;
+      dealMet = q >= 2;
+      dealStatus = dealMet ? 'BOGO ✓' : 'BOGO (add 1)';
+    } else if (deal && deal.type === 'off') {
+      lineTotal = Math.max(0, (unit - deal.amount) * q);
+      dealMet = true;
+      dealStatus = `${deal.label} ✓`;
+    }
+
+    lineTotal = +lineTotal.toFixed(2);
+    const regLine = regUnit !== null ? +(regUnit * q).toFixed(2) : lineTotal;
+    const itemSavings = regLine > lineTotal ? +(regLine - lineTotal).toFixed(2) : 0;
+    itemTotals[it.id] = { lineTotal, regularTotal: regLine, savings: itemSavings, deal, dealMet, dealStatus };
+    total += lineTotal;
+    savings += itemSavings;
+  }
+
   return {
-    total,
-    savings,
+    total: +total.toFixed(2),
+    savings: +savings.toFixed(2),
     totalQty,
     checkedRows,
     uncheckedRows: items.length - checkedRows,
     uncheckedKroger,
-    rows: items.length
+    rows: items.length,
+    itemTotals
   };
 }
 
@@ -757,30 +879,57 @@ function renderMarketLedgerOpenBook(container, sw) {
             </div>
           ` : ''}
           ${rows.map(it => {
-            const unit = (typeof it.promo === 'number' && it.promo > 0) ? it.promo : ((typeof it.price === 'number' && it.price > 0) ? it.price : null);
-            const lineTotal = unit !== null ? unit * (it.qty || 1) : null;
+            const calc = stats.itemTotals[it.id] || { lineTotal: null, regularTotal: null, savings: 0, deal: null, dealMet: false, dealStatus: '' };
+            const isEditingDeal = krogerState.editingDealItemId === it.id;
+            const showStrike = calc.regularTotal !== null && calc.lineTotal !== null && calc.regularTotal > calc.lineTotal + 0.005;
             return `
-              <div class="rounded-xl px-2.5 py-2 flex items-center gap-2 transition-opacity ${it.checked ? 'opacity-55' : ''}" style="background:#fffdf8; border:1.5px solid ${it.checked ? '#dfd1b8' : '#d7c3a1'};">
-                <input type="checkbox" data-mi-toggle="${it.id}" ${it.checked ? 'checked' : ''} class="w-4 h-4 accent-[#4f7c54] cursor-pointer shrink-0" />
-                ${it.imageUrl ? `<img src="${esc(it.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-contain bg-white border border-amber-900/15 shrink-0" />` : ''}
-                <div class="flex-1 min-w-0">
-                  <div class="text-xs font-bold leading-snug truncate ${it.checked ? 'line-through' : ''}" style="color:#2d1a0f;" title="${esc(it.name)}">${esc(it.name)}</div>
-                  <div class="flex items-center gap-1.5 flex-wrap text-[10.5px]" style="color:#7a5c44;">
-                    ${it.size ? `<span>${esc(it.size)}</span>` : `<span>${it.upc ? 'Kroger' : 'Custom'}</span>`}
-                    ${it.stockLevel === 'TEMPORARILY_OUT_OF_STOCK' ? `<span class="font-bold" style="color:#b54534;">&middot; Out of Stock</span>` : ''}
-                    ${it.stockLevel === 'LOW' ? `<span class="font-bold" style="color:#9a6210;">&middot; Low Stock</span>` : ''}
-                    ${it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener noreferrer" class="underline" style="color:#0d47a1;">Link</a>` : ''}
+              <div class="rounded-xl px-2.5 py-2 transition-opacity ${it.checked ? 'opacity-55' : ''}" style="background:#fffdf8; border:1.5px solid ${it.checked ? '#dfd1b8' : '#d7c3a1'};">
+                <div class="flex items-center gap-2">
+                  <input type="checkbox" data-mi-toggle="${it.id}" ${it.checked ? 'checked' : ''} class="w-4 h-4 accent-[#4f7c54] cursor-pointer shrink-0" />
+                  ${it.imageUrl ? `<img src="${esc(it.imageUrl)}" alt="" class="w-8 h-8 rounded-lg object-contain bg-white border border-amber-900/15 shrink-0" />` : ''}
+                  <div class="flex-1 min-w-0">
+                    <div class="text-xs font-bold leading-snug truncate ${it.checked ? 'line-through' : ''}" style="color:#2d1a0f;" title="${esc(it.name)}">${esc(it.name)}</div>
+                    <div class="flex items-center gap-1.5 flex-wrap text-[10.5px] mt-0.5" style="color:#7a5c44;">
+                      ${it.size ? `<span>${esc(it.size)}</span>` : `<span>${it.upc ? 'Kroger' : 'Custom'}</span>`}
+                      ${it.stockLevel === 'TEMPORARILY_OUT_OF_STOCK' ? `<span class="font-bold" style="color:#b54534;">&middot; Out of Stock</span>` : ''}
+                      ${it.stockLevel === 'LOW' ? `<span class="font-bold" style="color:#9a6210;">&middot; Low Stock</span>` : ''}
+                      <button type="button" data-mi-edit-deal="${it.id}" title="Set multi-buy deal (e.g. 4/$10, BOGO, -$1)"
+                        class="px-1.5 py-0.2 rounded-full text-[10px] font-bold cursor-pointer border-0"
+                        style="background:${calc.deal ? (calc.dealMet ? '#e3f0e4' : '#fdf0d5') : 'rgba(130,96,62,0.12)'}; color:${calc.deal ? (calc.dealMet ? '#2e6134' : '#9a6210') : '#6e523b'};">
+                        ${calc.deal ? esc(calc.dealStatus) : '+ Deal'}
+                      </button>
+                      ${it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener noreferrer" class="underline" style="color:#0d47a1;">Link</a>` : ''}
+                    </div>
                   </div>
+                  <div class="flex items-center gap-1 shrink-0">
+                    <button type="button" data-mi-dec="${it.id}" class="w-6 h-6 rounded-lg text-xs font-bold cursor-pointer" style="background:#f3e8d2; border:1px solid #c5ab86; color:#362316;">&minus;</button>
+                    <span class="w-5 text-center text-xs font-mono font-bold tabular-nums" style="color:#2d1a0f;">${it.qty || 1}</span>
+                    <button type="button" data-mi-inc="${it.id}" class="w-6 h-6 rounded-lg text-xs font-bold cursor-pointer" style="background:#f3e8d2; border:1px solid #c5ab86; color:#362316;">+</button>
+                  </div>
+                  <div class="w-16 text-right shrink-0">
+                    <div class="text-xs font-mono font-bold tabular-nums" style="color:${showStrike ? '#b54534' : '#2d1a0f'};">
+                      ${calc.lineTotal !== null ? `$${calc.lineTotal.toFixed(2)}` : '&mdash;'}
+                    </div>
+                    ${showStrike ? `<div class="text-[9.5px] font-mono line-through tabular-nums" style="color:#8f7054;">$${calc.regularTotal.toFixed(2)}</div>` : ''}
+                  </div>
+                  <button type="button" data-mi-del="${it.id}" title="Remove item" class="w-5 h-5 rounded text-xs font-bold bg-transparent border-0 cursor-pointer hover:text-red-700" style="color:#8f7054;">&times;</button>
                 </div>
-                <div class="flex items-center gap-1 shrink-0">
-                  <button type="button" data-mi-dec="${it.id}" class="w-6 h-6 rounded-lg text-xs font-bold cursor-pointer" style="background:#f3e8d2; border:1px solid #c5ab86; color:#362316;">&minus;</button>
-                  <span class="w-5 text-center text-xs font-mono font-bold tabular-nums" style="color:#2d1a0f;">${it.qty || 1}</span>
-                  <button type="button" data-mi-inc="${it.id}" class="w-6 h-6 rounded-lg text-xs font-bold cursor-pointer" style="background:#f3e8d2; border:1px solid #c5ab86; color:#362316;">+</button>
-                </div>
-                <div class="w-14 text-right text-xs font-mono font-bold tabular-nums shrink-0" style="color:#2d1a0f;">
-                  ${lineTotal !== null ? `$${lineTotal.toFixed(2)}` : '&mdash;'}
-                </div>
-                <button type="button" data-mi-del="${it.id}" title="Remove item" class="w-5 h-5 rounded text-xs font-bold bg-transparent border-0 cursor-pointer hover:text-red-700" style="color:#8f7054;">&times;</button>
+                ${isEditingDeal ? `
+                  <form data-mi-deal-form="${it.id}" class="mt-2 pt-2 border-t space-y-1.5" style="border-color:rgba(122,92,68,0.18);">
+                    <div class="flex items-center gap-1.5">
+                      <input type="text" data-mi-deal-input="${it.id}" value="${esc(it.deal || '')}" placeholder="e.g. 4/$10, 2/$5, BOGO, -$1" class="market-paper-input flex-1 rounded-lg px-2 py-1 text-[11px]" />
+                      <button type="submit" class="rounded-lg px-2.5 py-1 text-[11px] font-bold cursor-pointer" style="background:#4f7c54; color:#fffaf2; border:1px solid #2d5a34;">Apply</button>
+                      <button type="button" data-mi-deal-clear="${it.id}" class="rounded-lg px-2 py-1 text-[11px] font-semibold cursor-pointer" style="background:#f3e8d2; color:#362316; border:1px solid #c5ab86;">Clear</button>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-1 text-[10px]">
+                      <span style="color:#7a5c44;">Presets:</span>
+                      ${['4/$10', '2/$5', '3/$10', '2/$6', 'BOGO', '-$1'].map(preset => `
+                        <button type="button" data-mi-deal-preset="${it.id}|${preset}" class="px-1.5 py-0.5 rounded-md font-bold cursor-pointer" style="background:#f3e8d2; color:#362316; border:1px solid #c5ab86;">${preset}</button>
+                      `).join('')}
+                      <span class="ml-auto italic" style="color:#7a5c44;">Mix &amp; match pools same brand!</span>
+                    </div>
+                  </form>
+                ` : ''}
               </div>
             `;
           }).join('')}
@@ -1030,7 +1179,60 @@ function renderMarketLedgerOpenBook(container, sw) {
     btn.addEventListener('click', () => {
       if (!activeList) return;
       activeList.items = activeList.items.filter(x => x.id !== btn.dataset.miDel);
+      if (krogerState.editingDealItemId === btn.dataset.miDel) krogerState.editingDealItemId = null;
       commitChange();
+    });
+  });
+
+  bookRightEl.querySelectorAll('[data-mi-edit-deal]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.miEditDeal;
+      krogerState.editingDealItemId = krogerState.editingDealItemId === id ? null : id;
+      renderOpenBook(false);
+    });
+  });
+  bookRightEl.querySelectorAll('[data-mi-deal-form]').forEach(form => {
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const id = form.dataset.miDealForm;
+      const inp = form.querySelector(`[data-mi-deal-input="${id}"]`);
+      const raw = (inp?.value || '').trim();
+      const it = activeList?.items.find(x => x.id === id);
+      if (!it) return;
+      if (!raw) {
+        it.deal = '';
+        krogerState.editingDealItemId = null;
+        commitChange();
+        return;
+      }
+      const parsed = parseMarketDeal(raw);
+      if (!parsed) {
+        showToast('Try formats like 4/$10, 2/$5, BOGO, or -$1.50');
+        return;
+      }
+      it.deal = parsed.label;
+      krogerState.editingDealItemId = null;
+      commitChange();
+      showToast(`Applied ${parsed.label} deal to ${it.name}`);
+    });
+  });
+  bookRightEl.querySelectorAll('[data-mi-deal-clear]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const it = activeList?.items.find(x => x.id === btn.dataset.miDealClear);
+      if (it) it.deal = '';
+      krogerState.editingDealItemId = null;
+      commitChange();
+    });
+  });
+  bookRightEl.querySelectorAll('[data-mi-deal-preset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const [id, preset] = btn.dataset.miDealPreset.split('|');
+      const it = activeList?.items.find(x => x.id === id);
+      if (!it) return;
+      it.deal = preset;
+      krogerState.editingDealItemId = null;
+      commitChange();
+      showToast(`Applied ${preset} deal to ${it.name}`);
     });
   });
 
@@ -1400,15 +1602,16 @@ function renderGlobalMarketMenu() {
         <div class="space-y-1">
           <div class="text-[10px] font-bold uppercase tracking-wider px-1" style="color:var(--ui-muted);">${esc(aisle)}</div>
           ${rows.map(it => {
-            const unit = (typeof it.promo === 'number' && it.promo > 0) ? it.promo : ((typeof it.price === 'number' && it.price > 0) ? it.price : null);
+            const calc = stats.itemTotals[it.id] || { lineTotal: null, deal: null, dealMet: false, dealStatus: '' };
             return `
               <label class="flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl cursor-pointer text-xs" style="background:var(--ui-surface-alt); border:1.2px solid var(--ui-border);">
                 <span class="flex items-center gap-2 min-w-0">
                   <input type="checkbox" data-drawer-mi="${it.id}" ${it.checked ? 'checked' : ''} class="w-4 h-4 accent-[#4f7c54] shrink-0" />
                   <span class="truncate font-medium ${it.checked ? 'line-through opacity-55' : ''}" style="color:var(--ui-ink);">${esc(it.name)}</span>
+                  ${calc.deal ? `<span class="text-[9.5px] font-bold px-1.5 py-0.2 rounded-full shrink-0" style="background:${calc.dealMet ? '#e3f0e4' : '#fdf0d5'}; color:${calc.dealMet ? '#2e6134' : '#9a6210'};">${esc(calc.deal.label)}</span>` : ''}
                 </span>
                 <span class="font-mono text-[11px] font-bold tabular-nums shrink-0" style="color:var(--ui-muted);">
-                  ${it.qty > 1 ? `${it.qty}x ` : ''}${unit !== null ? `$${(unit * (it.qty || 1)).toFixed(2)}` : ''}
+                  ${it.qty > 1 ? `${it.qty}x ` : ''}${calc.lineTotal !== null ? `$${calc.lineTotal.toFixed(2)}` : ''}
                 </span>
               </label>
             `;
