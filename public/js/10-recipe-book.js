@@ -172,8 +172,15 @@ async function importRecipeUrlIntoBook(book, rawUrl) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url })
     });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data.error || 'Could not import recipe from that URL.');
+    const rawText = await resp.text();
+    let data = null;
+    try { data = rawText ? JSON.parse(rawText) : null; } catch (e) {}
+    if (!resp.ok || !data || !data.recipe) {
+      const hint = resp.status === 405 || resp.status === 404
+        ? `Server returned HTTP ${resp.status} for /api/recipe/import — rebuild/restart your server container (docker compose up -d --build).`
+        : (data?.error || (rawText && rawText.length < 180 ? rawText : `Recipe import failed (HTTP ${resp.status}).`));
+      throw new Error(hint);
+    }
     const imp = data.recipe;
     const pal = getPalette();
     const rb = book.recipeBook;

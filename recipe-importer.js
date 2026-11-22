@@ -260,12 +260,17 @@ function findRecipeInJsonLd(obj) {
 }
 
 function extractRecipeFromHtml(html, sourceUrl) {
-  const scriptRegex = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  const scriptRegex = /<script\b[^>]*type=["']application\/ld\+json[^"']*["'][^>]*>([\s\S]*?)<\/script>/gi;
   let match;
   let recipeObj = null;
 
   while ((match = scriptRegex.exec(html)) !== null) {
-    const rawJson = match[1].trim();
+    let rawJson = match[1]
+      .replace(/^\s*<!--/, '')
+      .replace(/-->\s*$/, '')
+      .replace(/^\s*<!\[CDATA\[/, '')
+      .replace(/\]\]>\s*$/, '')
+      .trim();
     if (!rawJson) continue;
     try {
       const parsed = JSON.parse(rawJson);
@@ -275,7 +280,7 @@ function extractRecipeFromHtml(html, sourceUrl) {
         break;
       }
     } catch (e) {
-      // Some blogs have unescaped newlines inside JSON-LD strings
+      // Some blogs have unescaped newlines/control chars inside JSON-LD strings
       try {
         const cleaned = rawJson.replace(/[\u0000-\u001F]+/g, ' ');
         const parsed = JSON.parse(cleaned);
@@ -391,7 +396,7 @@ async function importRecipeFromUrl(rawUrl) {
       redirect: 'follow',
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; StorytellersLibrary/1.0; +https://github.com/stearnsjr/nodular-library)',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9'
       }
