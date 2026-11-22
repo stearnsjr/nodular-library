@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { createKrogerService } = require('./kroger');
+const { createAlmanacService } = require('./almanac');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -121,6 +122,12 @@ function parseEnvelopeFile(filePath) {
   }
   return { rev: 0, updatedAt: null, state: null };
 }
+
+const almanac = createAlmanacService({
+  dataDir: DATA_DIR,
+  librariesDir: LIBRARIES_DIR,
+  parseEnvelopeFile
+});
 
 function listLibraries() {
   migrateLegacyStateIfNeeded();
@@ -791,6 +798,71 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, result);
     } catch (err) {
       sendJson(res, err.statusCode || 500, { error: err.message || 'Failed to add items to Kroger cart' });
+    }
+    return;
+  }
+
+  // ---- LIBRARY ALMANAC, CALENDAR & WEATHER ROUTES ----
+  if (pathname === '/api/almanac' && req.method === 'GET') {
+    try {
+      sendJson(res, 200, almanac.getAlmanacPayload());
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Failed to load almanac' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/almanac/events' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const result = almanac.saveEvent(body.event || body);
+      sendJson(res, 200, { ok: true, ...result });
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Failed to save event' });
+    }
+    return;
+  }
+
+  if (pathname.startsWith('/api/almanac/events/') && req.method === 'PATCH') {
+    try {
+      const id = decodeURIComponent(pathname.slice('/api/almanac/events/'.length));
+      const body = await readJsonBody(req);
+      const result = almanac.patchEvent(id, body);
+      sendJson(res, 200, { ok: true, ...result });
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Failed to update event' });
+    }
+    return;
+  }
+
+  if (pathname.startsWith('/api/almanac/events/') && req.method === 'DELETE') {
+    try {
+      const id = decodeURIComponent(pathname.slice('/api/almanac/events/'.length));
+      const result = almanac.deleteEvent(id);
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Failed to delete event' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/almanac/weather' && req.method === 'GET') {
+    try {
+      const weather = await almanac.getWeather();
+      sendJson(res, 200, weather);
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Weather lookup failed' });
+    }
+    return;
+  }
+
+  if (pathname === '/api/almanac/weather/config' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const weather = await almanac.updateWeatherConfig(body);
+      sendJson(res, 200, { ok: true, weather });
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Failed to update weather settings' });
     }
     return;
   }

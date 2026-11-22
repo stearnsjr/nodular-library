@@ -821,7 +821,7 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-document.getElementById('btn-home-hub').addEventListener('click', () => { closeOpenBook(); openCardIndex('rotunda', true); });
+document.getElementById('btn-home-hub')?.addEventListener('click', () => { closeOpenBook(); openCardIndex('rotunda', true); });
 document.getElementById('btn-card-index').addEventListener('click', () => { closeOpenBook(); openCardIndex(cardIndexTab === 'rotunda' ? 'colors' : cardIndexTab, false); });
 document.getElementById('btn-toggle-ribbons').addEventListener('click', () => {
   showRibbons = !showRibbons;

@@ -14,7 +14,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Library" />
   <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
-  <link rel="stylesheet" href="/styles.css?v=20261121e" />
+  <link rel="stylesheet" href="/styles.css?v=20261122a" />
 </head>
 <body class="lib-daylight">
   <!-- Full-viewport 2D Illustrated SVG Library Canvas -->
@@ -77,19 +77,45 @@
 
   <!-- Top Floating Storybook Toolbar -->
   <header id="top-toolbar" class="fixed top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
-    <div id="toolbar-left" class="storybook-panel rounded-2xl px-3.5 py-2 flex items-center gap-2.5 pointer-events-auto max-w-full overflow-x-auto">
-      <button id="btn-home-hub" title="Open Central Rotunda & Card Index" class="flex items-center gap-2 shrink-0 cursor-pointer bg-transparent border-0 p-0 text-left">
-        <span class="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style="background: var(--ui-accent-soft); border: 1.5px solid var(--ui-border);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="color: var(--ui-accent);">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-            <path d="M9 7h6M9 11h4" />
-          </svg>
+    <button id="btn-almanac-trigger" type="button" title="Open Library Almanac &amp; Calendar"
+      class="storybook-panel rounded-2xl px-3 py-1.5 sm:px-3.5 sm:py-2 flex items-center gap-2.5 sm:gap-3 pointer-events-auto cursor-pointer text-left max-w-full">
+      <div class="flex items-center gap-2">
+        <span class="w-8 h-8 rounded-xl flex flex-col items-center justify-center shrink-0 leading-none"
+          style="background: var(--ui-accent-soft); border: 1.5px solid var(--ui-border);">
+          <span id="alm-pill-month" class="text-[8.5px] font-extrabold uppercase tracking-wider" style="color: var(--ui-accent);">---</span>
+          <span id="alm-pill-daynum" class="font-storybook font-bold text-sm leading-tight" style="color: var(--ui-ink);">--</span>
         </span>
-        <span id="toolbar-title" class="font-storybook font-bold text-sm tracking-tight whitespace-nowrap" style="color: var(--ui-ink);">Storyteller's Library</span>
-      </button>
-      <nav id="breadcrumbs" class="flex items-center gap-1 text-xs whitespace-nowrap" style="color: var(--ui-muted);"></nav>
-    </div>
+        <div class="flex flex-col leading-tight">
+          <span id="alm-pill-date" class="font-storybook font-bold text-[13px] tracking-tight whitespace-nowrap" style="color: var(--ui-ink);">Loading…</span>
+          <span id="alm-pill-time" class="text-[11px] font-mono tabular-nums whitespace-nowrap" style="color: var(--ui-muted);">--:--</span>
+        </div>
+      </div>
+
+      <span class="h-6 w-px shrink-0" style="background: var(--ui-border); opacity: 0.65;"></span>
+
+      <div class="flex items-center gap-1.5 whitespace-nowrap">
+        <span id="alm-pill-wx-icon" class="text-base leading-none" aria-hidden="true">🌤️</span>
+        <div class="flex flex-col leading-tight">
+          <span id="alm-pill-wx-temp" class="text-xs font-bold tabular-nums" style="color: var(--ui-ink);">Weather</span>
+          <span id="alm-pill-wx-cond" class="hidden sm:inline text-[10.5px]" style="color: var(--ui-muted);">Set city</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1.5">
+        <span id="alm-pill-today-badge"
+          class="hidden inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold whitespace-nowrap"
+          style="background: var(--ui-accent); color: #fffaf2;">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-100 animate-pulse"></span>
+          <span id="alm-pill-today-count">0 today</span>
+        </span>
+        <span id="alm-pill-bday-soon" title="Upcoming birthday within 7 days"
+          class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold whitespace-nowrap"
+          style="background: var(--ev-bday-bg); border: 1px solid var(--ev-bday-border); color: var(--ui-ink);">
+          <span>🎂</span>
+          <span id="alm-pill-bday-text"></span>
+        </span>
+      </div>
+    </button>
 
     <div id="toolbar-actions" class="storybook-panel rounded-2xl px-2.5 py-1.5 flex items-center gap-1.5 pointer-events-auto relative">
       <!-- Quick Card Index button -->
@@ -396,6 +422,205 @@
     </div>
   </div>
 
+  <!-- Library Almanac & Calendar Modal -->
+  <div id="almanac-modal" class="modal-closed fixed inset-0 z-40 flex items-center justify-center p-2 sm:p-4 pt-[72px]"
+    style="background: rgba(14, 9, 6, 0.52); backdrop-filter: blur(5px);">
+    <div id="almanac-shell" class="storybook-panel relative w-full max-w-[1160px] h-[min(770px,calc(100vh-92px))] rounded-[26px] flex flex-col overflow-hidden">
+
+      <!-- Header -->
+      <div class="px-4 sm:px-5 py-2.5 border-b flex flex-wrap items-center justify-between gap-2.5 shrink-0"
+        style="border-color: var(--ui-border); background: var(--ui-surface-alt);">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <span class="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+            style="background: var(--ui-accent-soft); border: 1.5px solid var(--ui-border); color: var(--ui-accent);">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/>
+            </svg>
+          </span>
+          <h1 class="font-storybook font-bold text-base sm:text-lg leading-tight truncate m-0" style="color: var(--ui-ink);">Library Almanac</h1>
+        </div>
+
+        <div class="flex items-center gap-2 flex-wrap">
+          <div id="alm-wx-card" class="flex items-center gap-2.5 rounded-xl px-3 py-1"
+            style="background: var(--ui-surface-solid); border: 1.5px solid var(--ui-border);">
+            <span id="alm-hdr-wx-icon" class="text-base leading-none">🌤️</span>
+            <div class="leading-tight">
+              <div class="flex items-center gap-1.5">
+                <span id="alm-hdr-wx-temp" class="text-xs font-bold tabular-nums" style="color: var(--ui-ink);">--</span>
+                <span id="alm-hdr-wx-hl" class="text-[10.5px] tabular-nums" style="color: var(--ui-muted);"></span>
+              </div>
+              <button id="alm-btn-change-loc" type="button" title="Set weather location or °F / °C"
+                class="text-[10.5px] hover:underline bg-transparent border-0 p-0 cursor-pointer flex items-center gap-1"
+                style="color: var(--ui-accent);">
+                <span id="alm-hdr-wx-loc">Set location</span>
+                <span>✎</span>
+              </button>
+            </div>
+            <div id="alm-hdr-wx-forecast" class="hidden md:flex items-center gap-2 pl-2 ml-1 border-l text-[10.5px] tabular-nums"
+              style="border-color: var(--ui-border); color: var(--ui-muted);"></div>
+          </div>
+
+          <button id="alm-btn-close" type="button" title="Close (Esc)" class="storybook-btn rounded-xl p-2 cursor-pointer">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Inline Weather Location & Unit Editor Bar -->
+      <div id="alm-loc-bar" class="hidden px-5 py-2 border-b flex flex-wrap items-center justify-between gap-2 text-xs shrink-0"
+        style="border-color: var(--ui-border); background: var(--ui-surface-solid);">
+        <form id="alm-loc-form" class="flex flex-wrap items-center gap-2">
+          <span class="font-semibold" style="color: var(--ui-muted);">Location:</span>
+          <input id="alm-loc-input" type="text" placeholder="City or postal code (e.g. Seattle, WA)…" class="storybook-input rounded-lg px-2.5 py-1 text-xs w-56" />
+          <button id="alm-btn-save-loc" type="submit" class="storybook-btn-primary rounded-lg px-2.5 py-1 text-xs font-bold cursor-pointer">Update</button>
+          <button id="alm-btn-geo-loc" type="button" title="Use browser location (requires HTTPS)" class="storybook-btn rounded-lg px-2.5 py-1 text-xs cursor-pointer">Use GPS</button>
+          <button id="alm-btn-cancel-loc" type="button" class="storybook-btn rounded-lg px-2 py-1 text-xs cursor-pointer">Close</button>
+        </form>
+
+        <div class="flex items-center gap-1 rounded-xl p-0.5" style="background: var(--ui-surface-alt); border: 1.5px solid var(--ui-border);">
+          <button id="alm-unit-f" type="button" class="px-2.5 py-0.5 rounded-lg text-xs font-bold cursor-pointer border-0">°F</button>
+          <button id="alm-unit-c" type="button" class="px-2.5 py-0.5 rounded-lg text-xs font-bold cursor-pointer border-0 bg-transparent">°C</button>
+        </div>
+      </div>
+
+      <!-- Filter, Scope & Mobile View Switcher Bar -->
+      <div class="px-4 sm:px-5 py-2 border-b flex flex-wrap items-center justify-between gap-2 shrink-0"
+        style="border-color: var(--ui-border); background: var(--alm-bg-alt);">
+        <div class="flex items-center gap-1.5 flex-wrap" id="alm-filter-chips">
+          <button data-alm-filter="all" type="button" class="storybook-btn active rounded-xl px-2.5 py-1 text-xs font-semibold cursor-pointer">All</button>
+          <button data-alm-filter="birthday" type="button" class="storybook-btn rounded-xl px-2.5 py-1 text-xs font-semibold cursor-pointer">🎂 Birthdays</button>
+          <button data-alm-filter="book-date" type="button" class="storybook-btn rounded-xl px-2.5 py-1 text-xs font-semibold cursor-pointer">📖 Book Dates</button>
+          <button data-alm-filter="reminder" type="button" class="storybook-btn rounded-xl px-2.5 py-1 text-xs font-semibold cursor-pointer">🔔 Events &amp; Reminders</button>
+        </div>
+
+        <div class="flex items-center gap-2 text-xs">
+          <div class="flex lg:hidden items-center rounded-xl p-0.5" style="background: var(--ui-surface-alt); border: 1.5px solid var(--ui-border);">
+            <button id="alm-mob-month" type="button" class="px-2.5 py-0.5 rounded-lg text-xs font-bold cursor-pointer border-0"
+              style="background: var(--ui-accent); color: #fffaf2;">Month</button>
+            <button id="alm-mob-agenda" type="button" class="px-2.5 py-0.5 rounded-lg text-xs font-bold cursor-pointer border-0 bg-transparent"
+              style="color: var(--ui-muted);">Agenda</button>
+          </div>
+
+          <label class="hidden sm:inline font-semibold" style="color: var(--ui-muted);" for="alm-scope-select">Scope:</label>
+          <select id="alm-scope-select" class="storybook-input rounded-xl px-2.5 py-1 text-xs font-medium cursor-pointer">
+            <option value="all">All Libraries (Unified)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Main Split Content -->
+      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
+        <!-- LEFT: Calendar Month Grid (7 cols) -->
+        <div id="alm-pane-month" class="lg:col-span-7 flex flex-col min-h-0 lg:border-r p-3.5 sm:p-4 overflow-hidden"
+          style="border-color: var(--ui-border); background: var(--alm-bg);">
+          <div class="relative flex items-center justify-between gap-2 mb-2.5 shrink-0">
+            <div class="flex items-center gap-2">
+              <button id="alm-btn-month-jump" type="button" title="Click to jump to any month or year"
+                class="font-storybook font-bold text-lg sm:text-xl flex items-center gap-1.5 bg-transparent border-0 p-0 cursor-pointer hover:underline"
+                style="color: var(--ui-ink);">
+                <span id="alm-month-label">Month Year</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="color: var(--ui-muted);"><path d="M6 9l6 6 6-6"/></svg>
+              </button>
+              <span id="alm-month-count" class="text-[11px] font-mono px-2 py-0.5 rounded-full"
+                style="background: var(--ui-accent-soft); color: var(--ui-accent);">0 items</span>
+            </div>
+
+            <div class="flex items-center gap-1.5">
+              <button id="alm-btn-prev-month" type="button" class="storybook-btn rounded-xl px-2.5 py-1 text-xs font-bold cursor-pointer">&lsaquo;</button>
+              <button id="alm-btn-go-today" type="button" class="storybook-btn rounded-xl px-3 py-1 text-xs font-semibold cursor-pointer">Today</button>
+              <button id="alm-btn-next-month" type="button" class="storybook-btn rounded-xl px-2.5 py-1 text-xs font-bold cursor-pointer">&rsaquo;</button>
+            </div>
+
+            <div id="alm-month-jump-pop" class="hidden absolute left-0 top-full mt-1.5 z-30 storybook-panel rounded-2xl p-3 w-64 space-y-2.5 shadow-2xl">
+              <div class="flex items-center justify-between gap-2">
+                <button id="alm-jump-yr-prev" type="button" class="storybook-btn rounded-lg px-2 py-0.5 text-xs font-bold cursor-pointer">&lsaquo;</button>
+                <span id="alm-jump-yr-label" class="font-storybook font-bold text-sm" style="color: var(--ui-ink);">2026</span>
+                <button id="alm-jump-yr-next" type="button" class="storybook-btn rounded-lg px-2 py-0.5 text-xs font-bold cursor-pointer">&rsaquo;</button>
+              </div>
+              <div id="alm-jump-months-grid" class="grid grid-cols-3 gap-1.5"></div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-7 gap-1 mb-1 text-center text-[11px] font-bold uppercase tracking-wider shrink-0" style="color: var(--ui-muted);">
+            <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+          </div>
+
+          <div id="alm-cal-grid" class="flex-1 min-h-0 grid grid-rows-6 gap-1"></div>
+        </div>
+
+        <!-- RIGHT: Day Agenda, Event Detail Card, Add/Edit Form & Upcoming (5 cols) -->
+        <div id="alm-pane-agenda" class="hidden lg:flex lg:col-span-5 flex-col min-h-0 overflow-hidden" style="background: var(--alm-bg-alt);">
+          <div class="px-4 py-2.5 border-b flex items-center justify-between gap-2 shrink-0" style="border-color: var(--ui-border);">
+            <div>
+              <div id="alm-agenda-title" class="font-storybook font-bold text-base leading-tight" style="color: var(--ui-ink);">Today</div>
+              <div id="alm-agenda-sub" class="text-[11.5px]" style="color: var(--ui-muted);"></div>
+            </div>
+            <button id="alm-btn-add" type="button" class="storybook-btn-primary rounded-xl px-3 py-1.5 text-xs font-bold cursor-pointer">
+              + Add
+            </button>
+          </div>
+
+          <div id="alm-right-body" class="flex-1 min-h-0 overflow-y-auto nice-scroll p-4 space-y-3.5">
+            <form id="alm-event-form" class="hidden rounded-2xl p-3.5 space-y-2.5"
+              style="background: var(--ui-surface-solid); border: 1.5px solid var(--ui-accent);">
+              <div class="flex items-center justify-between">
+                <span id="alm-form-heading" class="font-storybook font-bold text-sm" style="color: var(--ui-ink);">New Event / Reminder</span>
+                <button id="alm-btn-cancel-form" type="button" class="text-xs bg-transparent border-0 cursor-pointer" style="color: var(--ui-muted);">Cancel</button>
+              </div>
+              <input id="alm-f-title" type="text" required placeholder="Title (e.g. Call Mom, Cabin Vacation, Session 15…)" class="storybook-input w-full rounded-xl px-3 py-1.5 text-xs" />
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-[10.5px] font-semibold mb-0.5" style="color: var(--ui-muted);">Start Date</label>
+                  <input id="alm-f-date" type="date" required class="storybook-input w-full rounded-xl px-2.5 py-1.5 text-xs" />
+                </div>
+                <div>
+                  <label class="block text-[10.5px] font-semibold mb-0.5" style="color: var(--ui-muted);">End Date <span class="opacity-70">(optional)</span></label>
+                  <input id="alm-f-end-date" type="date" class="storybook-input w-full rounded-xl px-2.5 py-1.5 text-xs" />
+                </div>
+              </div>
+              <div class="grid grid-cols-3 gap-2">
+                <select id="alm-f-kind" class="storybook-input rounded-xl px-2 py-1.5 text-xs">
+                  <option value="reminder">🔔 Reminder</option>
+                  <option value="event">📌 Event</option>
+                  <option value="vacation">🏕️ Trip / Block</option>
+                </select>
+                <input id="alm-f-time" type="time" title="Optional time (single-day)" class="storybook-input rounded-xl px-2 py-1.5 text-xs" />
+                <select id="alm-f-recur" class="storybook-input rounded-xl px-2 py-1.5 text-xs">
+                  <option value="none">One-time</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold mb-1" style="color: var(--ui-muted);">Link to Library / Hall / Book / Page (optional)</label>
+                <select id="alm-f-link" class="storybook-input w-full rounded-xl px-2.5 py-1.5 text-xs">
+                  <option value="">Standalone (Personal Calendar)</option>
+                </select>
+              </div>
+              <textarea id="alm-f-notes" rows="2" placeholder="Optional notes…" class="storybook-input w-full rounded-xl px-3 py-1.5 text-xs resize-none"></textarea>
+              <div class="flex justify-end gap-2 pt-1">
+                <button id="alm-btn-submit-form" type="submit" class="storybook-btn-primary rounded-xl px-3.5 py-1.5 text-xs font-bold cursor-pointer">Save</button>
+              </div>
+            </form>
+
+            <div id="alm-day-events" class="space-y-2"></div>
+            <div id="alm-detail-card" class="hidden rounded-2xl p-3.5 space-y-2.5"
+              style="background: var(--ui-surface-solid); border: 1.5px solid var(--ui-border);"></div>
+
+            <div class="pt-2 border-t" style="border-color: var(--ui-border);">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-[11px] font-bold uppercase tracking-wider" style="color: var(--ui-muted);">Coming Up (Next 14 Days)</span>
+                <span id="alm-upcoming-count" class="text-[11px] font-mono" style="color: var(--ui-muted);"></span>
+              </div>
+              <div id="alm-upcoming-list" class="space-y-1.5"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Kroger API & Store Settings Modal -->
   <div id="kroger-settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5" style="background: rgba(24, 14, 8, 0.58); backdrop-filter: blur(5px);">
     <div id="kroger-settings-card" class="storybook-panel rounded-3xl w-full max-w-[540px] max-h-[88vh] flex flex-col overflow-hidden shadow-2xl"></div>
@@ -409,9 +634,10 @@
   <script defer src="/js/04-map-svg.js?v=20261121b"></script>
   <script defer src="/js/05-audio-librarians.js?v=20261121e"></script>
   <script defer src="/js/06-rich-book-dnd.js?v=20261121e"></script>
-  <script defer src="/js/07-inspector-crud.js?v=20261121e"></script>
-  <script defer src="/js/08-search-bootstrap.js?v=20261121e"></script>
+  <script defer src="/js/07-inspector-crud.js?v=20261122a"></script>
+  <script defer src="/js/08-search-bootstrap.js?v=20261122a"></script>
   <script defer src="/js/09-market-kroger.js?v=20261121d"></script>
+  <script defer src="/js/10-almanac-calendar.js?v=20261122a"></script>
   <script>
     if ('serviceWorker' in navigator && /^https?:$/i.test(window.location.protocol)) {
       window.addEventListener('load', () => {

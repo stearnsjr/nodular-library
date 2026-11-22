@@ -1280,8 +1280,11 @@ function deletePage(hallId, bookId, pageId) {
 }
 
 function renderBreadcrumbs() {
-  document.getElementById('toolbar-title').textContent = state.title || 'My Library';
+  if (state?.title) document.title = `${state.title} — Storyteller's Library`;
+  const titleEl = document.getElementById('toolbar-title');
+  if (titleEl) titleEl.textContent = state.title || 'My Library';
   const bc = document.getElementById('breadcrumbs');
+  if (!bc) return;
   if (openBookState.bookId && openBookState.hallId === LOOSE_PAPER_MODE_ID) {
     const page = (state.cart?.pages || []).find(p => p.id === openBookState.pageId);
     bc.innerHTML = `<span class="opacity-60">&rsaquo;</span><button id="bc-go-cart" class="hover:underline bg-transparent border-0 p-0 cursor-pointer text-xs font-medium" style="color:var(--ui-ink);">Sorting Pile</button>`

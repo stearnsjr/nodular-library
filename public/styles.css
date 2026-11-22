@@ -31,6 +31,22 @@ body.lib-daylight {
   --ui-paper: #fffdf7;
   --ui-paper-alt: #faf2e1;
   --ui-paper-line: rgba(168, 138, 102, 0.22);
+  --alm-bg: #fffdf7;
+  --alm-bg-alt: #faf2e1;
+  --alm-cell-hover: rgba(201, 104, 67, 0.09);
+  --alm-cell-other: rgba(122, 92, 68, 0.06);
+  --ev-bday-bg: rgba(209, 79, 105, 0.14);
+  --ev-bday-border: rgba(209, 79, 105, 0.45);
+  --ev-bday-dot: #c94764;
+  --ev-book-bg: rgba(58, 118, 168, 0.14);
+  --ev-book-border: rgba(58, 118, 168, 0.45);
+  --ev-book-dot: #3a76a8;
+  --ev-rem-bg: rgba(196, 118, 36, 0.16);
+  --ev-rem-border: rgba(196, 118, 36, 0.48);
+  --ev-rem-dot: #c47624;
+  --ev-span-bg: rgba(58, 132, 94, 0.18);
+  --ev-span-border: rgba(58, 132, 94, 0.52);
+  --ev-span-dot: #3a845e;
 }
 
 body.lib-candlelight {
@@ -49,6 +65,22 @@ body.lib-candlelight {
   --ui-paper: #f8ecd4;
   --ui-paper-alt: #efe0c2;
   --ui-paper-line: rgba(124, 92, 58, 0.2);
+  --alm-bg: #2c1f18;
+  --alm-bg-alt: #241913;
+  --alm-cell-hover: rgba(224, 149, 69, 0.12);
+  --alm-cell-other: rgba(0, 0, 0, 0.18);
+  --ev-bday-bg: rgba(226, 109, 133, 0.22);
+  --ev-bday-border: rgba(226, 109, 133, 0.55);
+  --ev-bday-dot: #e26d85;
+  --ev-book-bg: rgba(95, 158, 209, 0.22);
+  --ev-book-border: rgba(95, 158, 209, 0.55);
+  --ev-book-dot: #5f9ed1;
+  --ev-rem-bg: rgba(224, 149, 69, 0.22);
+  --ev-rem-border: rgba(224, 149, 69, 0.55);
+  --ev-rem-dot: #e09545;
+  --ev-span-bg: rgba(95, 168, 130, 0.28);
+  --ev-span-border: rgba(114, 194, 152, 0.65);
+  --ev-span-dot: #6ec498;
 }
 
 .storybook-panel {
@@ -1402,6 +1434,52 @@ body.lib-candlelight .oak-tabletop-plank {
 }
 .audio-playing-dot {
   animation: audioDotPulse 1.8s ease-in-out infinite;
+}
+
+/* Library Almanac: Upper-Left Date/Time/Weather Pill & Calendar Modal */
+#btn-almanac-trigger {
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.18s ease, box-shadow 0.18s ease;
+}
+#btn-almanac-trigger:hover {
+  transform: translateY(-1px);
+  border-color: var(--ui-accent);
+  box-shadow: 0 10px 26px var(--ui-shadow), 0 0 0 2px var(--ui-accent-soft);
+}
+#btn-almanac-trigger:active {
+  transform: scale(0.985);
+}
+
+#almanac-modal {
+  transition: opacity 0.2s ease;
+}
+#almanac-modal.modal-closed {
+  opacity: 0;
+  pointer-events: none;
+}
+#almanac-modal.modal-closed * {
+  pointer-events: none !important;
+}
+#almanac-modal.modal-closed #almanac-shell {
+  transform: translateY(10px) scale(0.975);
+}
+#almanac-shell {
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+.cal-cell {
+  transition: background-color 0.14s ease, border-color 0.14s ease;
+}
+.cal-cell:hover {
+  background: var(--alm-cell-hover);
+}
+.cal-cell.is-selected {
+  background: var(--ui-accent-soft);
+  box-shadow: inset 0 0 0 2px var(--ui-accent);
+}
+.cal-cell.is-other-month {
+  background: var(--alm-cell-other);
+  opacity: 0.55;
 }
 
 
