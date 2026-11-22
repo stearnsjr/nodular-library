@@ -1429,6 +1429,13 @@ body.lib-candlelight .kanban-col {
   #book-spread-wrap.market-mobile-tab-search #open-book-right {
     display: none !important;
   }
+  #book-spread-wrap.recipe-mobile-tab-ingredients #open-book-right {
+    display: none !important;
+  }
+  #book-spread-wrap.recipe-mobile-tab-directions #open-book-left,
+  #book-spread-wrap.recipe-mobile-tab-notes #open-book-left {
+    display: none !important;
+  }
 }
 
 /* Cozy Soundscape & Lofi Studio controls */

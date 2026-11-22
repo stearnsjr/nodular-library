@@ -945,6 +945,43 @@ function createProjectBoard(hallId, shelfId = null) {
   return newBoard;
 }
 
+function createRecipeBook(hallId, shelfId = null) {
+  const info = findHallInfo(hallId);
+  if (!info) return null;
+  const hall = info.hall;
+  hall.collapsed = false;
+  const pal = getPalette();
+  const prevBays = packBooksIntoBays(hall.books, hall.shelves).length;
+  const terraSwatch = pal.find(s => s.id === 'terracotta') || pal[0];
+  const existingCount = hall.books.filter(b => isRecipeBook(b)).length;
+  const title = existingCount === 0 ? 'Recipe Book' : `Recipe Book ${existingCount + 1}`;
+  const chId = uid('ch');
+  const pId = uid('p');
+  const targetShelfId = resolveTargetShelfId(hall, shelfId);
+  const newBook = {
+    id: uid('b'),
+    itemType: 'book',
+    title,
+    color: terraSwatch.id,
+    pinned: false,
+    summary: 'Recipe Cards, URL Auto-Importer & Kroger Ingredient Matcher',
+    ...(targetShelfId ? { shelfId: targetShelfId } : {}),
+    recipeBook: createDefaultRecipeBookData('My First Recipe'),
+    chapters: [{ id: chId, title: 'Recipes', color: terraSwatch.id }],
+    pages: [{ id: pId, chapterId: chId, title: 'Recipe Book', stamps: [], properties: [], body: '', html: '' }]
+  };
+  hall.books.push(newBook);
+  const nextBays = packBooksIntoBays(hall.books, hall.shelves).length;
+  commitChange();
+  openBookCenter(hall.id, newBook.id, pId, 'spread');
+  const shName = targetShelfId ? hall.shelves.find(s => s.id === targetShelfId)?.name : null;
+  showToast(shName
+    ? `Created Recipe Book on "${shName}"!`
+    : (nextBays > prevBays ? `Expanded "${hall.title}" with Bookshelf #${nextBays} & created Recipe Book!` : `Created Recipe Book in "${hall.title}"`)
+  );
+  return newBook;
+}
+
 function deleteBook(hallId, bookId) {
   if (hallId === CART_HALL_ID) {
     state.cart.books = (state.cart.books || []).filter(b => b.id !== bookId);
@@ -2323,6 +2360,7 @@ function renderInspector() {
         <span class="text-xs font-semibold" style="color:var(--ui-muted);">Shelf Items (${hall.books.length})</span>
         <div class="flex items-center gap-1 flex-wrap">
           ${hall.books.length > 0 ? `<button id="insp-toggle-organize" type="button" class="storybook-btn ${hallOrganizeMode ? 'active' : ''} rounded-xl px-2 py-1 text-[11px] font-bold cursor-pointer" title="Toggle tap buttons to reorder, move, or recycle shelf items">${hallOrganizeMode ? 'Done' : 'Organize'}</button>` : ''}
+          <button id="insp-add-recipe" class="storybook-btn rounded-xl px-2 py-1 text-[11px] font-bold cursor-pointer" title="Create a Recipe Book with URL auto-import, dietary stamps &amp; Kroger matching">+ Recipe</button>
           <button id="insp-add-market" class="storybook-btn rounded-xl px-2 py-1 text-[11px] font-bold cursor-pointer" title="Create a Market Ledger shopping list book with Kroger search &amp; cart sync">+ Market</button>
           <button id="insp-add-dndchar" class="storybook-btn rounded-xl px-2 py-1 text-[11px] font-bold cursor-pointer" title="Create a 3-page D&amp;D 5e / 2024 Character Sheet Book with Session Notes">+ D&amp;D</button>
           <button id="insp-add-board" class="storybook-btn rounded-xl px-2 py-1 text-[11px] font-bold cursor-pointer" title="Create a Kanban Project Board folio (Ideas, Next Up, In Progress, Done)">+ Board</button>
@@ -2338,7 +2376,9 @@ function renderInspector() {
           const isMkt = isMarketLedger(b);
           const isBoard = !isSc && isProjectBoard(b);
           const bStats = isBoard ? getProjectBoardStats(b) : null;
+          const isRec = isRecipeBook(b);
           const mktCount = isMkt ? (b.marketLedger.lists || []).reduce((acc, l) => acc + (l.items || []).length, 0) : 0;
+          const recCount = isRec ? (b.recipeBook.recipes || []).length : 0;
           const shelfObj = (hall.shelves || []).find(s => s.id === b.shelfId);
           return `
             <div class="space-y-1">
@@ -2354,7 +2394,7 @@ function renderInspector() {
                   <span class="truncate">${esc(b.title)}${b.pinned ? ' &#9733;' : ''}</span>
                   ${shelfObj ? `<span class="text-[9.5px] font-bold px-1.5 py-0.2 rounded-full shrink-0" style="background:var(--ui-accent-soft); color:var(--ui-accent);">${esc(truncate(shelfObj.name, 14))}</span>` : ''}
                 </span>
-                <span class="text-[11px] shrink-0" style="color:var(--ui-muted);">${isSc ? 'Scroll' : (isBoard ? `Board (${bStats.doneChapterId ? `${bStats.done}/${bStats.total}` : bStats.total})` : (isDnd ? `D&amp;D ${b.dndChar.edition === '5e' ? '5e' : '24'}` : (isMkt ? `Market (${mktCount})` : `${b.pages.length} pp`)))} &rarr;</span>
+                <span class="text-[11px] shrink-0" style="color:var(--ui-muted);">${isSc ? 'Scroll' : (isBoard ? `Board (${bStats.doneChapterId ? `${bStats.done}/${bStats.total}` : bStats.total})` : (isDnd ? `D&amp;D ${b.dndChar.edition === '5e' ? '5e' : '24'}` : (isMkt ? `Market (${mktCount})` : (isRec ? `Recipes (${recCount})` : `${b.pages.length} pp`))))} &rarr;</span>
               </button>
               ${hallOrganizeMode ? `
                 <div class="insp-organize-bar flex items-center gap-1 flex-wrap px-1 pb-1">
@@ -2450,6 +2490,7 @@ function renderInspector() {
     hallOrganizeMode = !hallOrganizeMode;
     renderInspector();
   });
+  document.getElementById('insp-add-recipe')?.addEventListener('click', () => createRecipeBook(hall.id));
   document.getElementById('insp-add-market')?.addEventListener('click', () => createMarketLedgerBook(hall.id));
   document.getElementById('insp-add-dndchar').addEventListener('click', () => createCharacterBook(hall.id, '2024'));
   document.getElementById('insp-add-board')?.addEventListener('click', () => createProjectBoard(hall.id));

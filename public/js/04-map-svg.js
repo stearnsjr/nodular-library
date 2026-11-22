@@ -208,11 +208,12 @@ function renderBookshelfBaySVG(bayGeom, ink, wallColor, wallHighlight, glow) {
 
     const isCharBook = isCharacterBook(book);
     const isMktBook = isMarketLedger(book);
+    const isRecBook = isRecipeBook(book);
     const tipPrefix = isScroll
       ? 'Scroll · '
       : (isBoard
         ? 'Project Board · '
-        : (isCharBook ? 'D&D Character · ' : (isMktBook ? 'Market Ledger · ' : '')));
+        : (isCharBook ? 'D&D Character · ' : (isMktBook ? 'Market Ledger · ' : (isRecBook ? 'Recipe Book · ' : ''))));
     const tipProgress = isBoard && boardStats.doneChapterId ? ` (${boardStats.done}/${boardStats.total})` : '';
     const tipText = `${tipPrefix}${truncate(book.title, 26)}${tipProgress}${book.pinned ? ' ★ Study Table' : ''} · Click to ${isScroll ? 'unroll' : 'open'}, drag to move`;
     const tipW = Math.max(146, tipText.length * 5.6 + 20);

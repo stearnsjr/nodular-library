@@ -1518,11 +1518,19 @@ function renderOpenBook(animateTurn = false) {
   renderReferencePeekDrawer();
 
   if (!isLoosePaper && isMarketLedger(book) && typeof renderMarketLedgerOpenBook === 'function') {
-    bookSpreadWrap.classList.remove('is-single-page-mode', 'is-corkboard-mode');
+    bookSpreadWrap.classList.remove('is-single-page-mode', 'is-corkboard-mode', 'recipe-mobile-tab-ingredients', 'recipe-mobile-tab-directions', 'recipe-mobile-tab-notes');
     document.getElementById('btn-close-book-label').textContent = 'Close Ledger';
     renderMarketLedgerOpenBook(container, sw);
     return;
   }
+
+  if (!isLoosePaper && isRecipeBook(book) && typeof renderRecipeBookOpenBook === 'function') {
+    bookSpreadWrap.classList.remove('is-single-page-mode', 'is-corkboard-mode', 'market-mobile-tab-list', 'market-mobile-tab-search');
+    document.getElementById('btn-close-book-label').textContent = 'Close Recipes';
+    renderRecipeBookOpenBook(container, sw);
+    return;
+  }
+  bookSpreadWrap.classList.remove('market-mobile-tab-list', 'market-mobile-tab-search', 'recipe-mobile-tab-ingredients', 'recipe-mobile-tab-directions', 'recipe-mobile-tab-notes');
 
   const orderedPages = getOrderedBookPages(book);
   const activeIdx = orderedPages.findIndex(p => p.id === openBookState.pageId);

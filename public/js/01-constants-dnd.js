@@ -254,6 +254,96 @@ function normalizeMarketLedger(raw) {
   };
 }
 
+function isRecipeBook(item) {
+  return Boolean(item && item.recipeBook && typeof item.recipeBook === 'object');
+}
+
+const RECIPE_DIETARY_STAMP_PRESETS = [
+  { label: 'Vegetarian',   color: '#4c7c53' },
+  { label: 'Keto',         color: '#436b8c' },
+  { label: 'Gluten-Free',  color: '#b88225' },
+  { label: 'Dairy-Free',   color: '#539993' },
+  { label: '30 Min',       color: '#c45e3c' },
+  { label: 'High Protein', color: '#7d4a66' },
+  { label: 'Meal Prep',    color: '#8f5d38' }
+];
+
+function createEmptyRecipeCard(title = 'New Recipe') {
+  return {
+    id: uid('rc'),
+    title,
+    sourceUrl: '',
+    sourceHost: '',
+    imageUrl: '',
+    emoji: '🍽️',
+    color: 'terracotta',
+    prepMin: 10,
+    cookMin: 20,
+    baseServings: 4,
+    stamps: [],
+    notes: '',
+    ingredients: [],
+    steps: []
+  };
+}
+
+function createDefaultRecipeBookData(initialTitle = 'Untitled Recipe') {
+  const first = createEmptyRecipeCard(initialTitle);
+  return {
+    activeRecipeId: first.id,
+    recipes: [first]
+  };
+}
+
+function normalizeRecipeBook(raw) {
+  const base = createDefaultRecipeBookData();
+  if (!raw || typeof raw !== 'object') return base;
+  const recipes = Array.isArray(raw.recipes) && raw.recipes.length > 0
+    ? raw.recipes
+        .filter(r => r && typeof r === 'object')
+        .map((r, idx) => ({
+          id: r.id || uid('rc'),
+          title: typeof r.title === 'string' && r.title.trim() ? r.title : `Recipe ${idx + 1}`,
+          sourceUrl: typeof r.sourceUrl === 'string' ? r.sourceUrl : '',
+          sourceHost: typeof r.sourceHost === 'string' ? r.sourceHost : '',
+          imageUrl: typeof r.imageUrl === 'string' ? r.imageUrl : '',
+          emoji: typeof r.emoji === 'string' && r.emoji ? r.emoji : '🍽️',
+          color: typeof r.color === 'string' ? r.color : 'terracotta',
+          prepMin: Math.max(0, parseInt(r.prepMin, 10) || 0),
+          cookMin: Math.max(0, parseInt(r.cookMin, 10) || 0),
+          baseServings: Math.max(1, Math.min(100, parseInt(r.baseServings, 10) || 4)),
+          stamps: Array.isArray(r.stamps) ? r.stamps.filter(s => typeof s === 'string') : [],
+          notes: typeof r.notes === 'string' ? r.notes : '',
+          ingredients: Array.isArray(r.ingredients)
+            ? r.ingredients
+                .filter(i => i && typeof i === 'object')
+                .map(i => ({
+                  id: i.id || uid('ri'),
+                  qty: typeof i.qty === 'number' && !Number.isNaN(i.qty) && i.qty > 0 ? i.qty : 1,
+                  hasExplicitQty: i.hasExplicitQty !== false,
+                  unit: typeof i.unit === 'string' ? i.unit : '',
+                  name: typeof i.name === 'string' ? i.name : '',
+                  pantry: Boolean(i.pantry)
+                }))
+            : [],
+          steps: Array.isArray(r.steps)
+            ? r.steps
+                .filter(st => st && typeof st === 'object')
+                .map(st => ({
+                  id: st.id || uid('rs'),
+                  text: typeof st.text === 'string' ? st.text : '',
+                  timerMin: typeof st.timerMin === 'number' && st.timerMin > 0 ? Math.round(st.timerMin) : null
+                }))
+            : []
+        }))
+    : base.recipes;
+  const activeValid = recipes.some(r => r.id === raw.activeRecipeId);
+  return {
+    activeRecipeId: activeValid ? raw.activeRecipeId : recipes[0].id,
+    recipes
+  };
+}
+
 const DND_ABILITIES = [
   { key: 'str', label: 'STR', name: 'Strength' },
   { key: 'dex', label: 'DEX', name: 'Dexterity' },

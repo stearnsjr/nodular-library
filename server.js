@@ -6,6 +6,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { createKrogerService } = require('./kroger');
 const { createAlmanacService } = require('./almanac');
+const { importRecipeFromUrl } = require('./recipe-importer');
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -863,6 +864,18 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, { ok: true, weather });
     } catch (err) {
       sendJson(res, err.statusCode || 500, { error: err.message || 'Failed to update weather settings' });
+    }
+    return;
+  }
+
+  // ---- RECIPE URL AUTO-IMPORTER (schema.org/Recipe JSON-LD) ----
+  if (pathname === '/api/recipe/import' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const recipe = await importRecipeFromUrl(body.url || '');
+      sendJson(res, 200, { ok: true, recipe });
+    } catch (err) {
+      sendJson(res, err.statusCode || 500, { error: err.message || 'Could not import recipe from URL' });
     }
     return;
   }
