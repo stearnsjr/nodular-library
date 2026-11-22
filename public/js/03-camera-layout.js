@@ -885,7 +885,7 @@ function computeLayout() {
         angle, cos, sin, perpX, perpY,
         rStart, rEnd, halfWidth, rugHalf,
         spineAt, bannerPt, endPt, junctionPt, swivelPt,
-        addBookPt: null, addSubPt: null, bays: [], collapsed: true
+        addHubPt: null, hasSubs: false, bays: [], collapsed: true
       };
       cache.halls.push(hallGeom);
       cache.hallMap[hall.id] = hallGeom;
@@ -923,20 +923,20 @@ function computeLayout() {
       ? { x: junctionPt.x - perpX * (halfWidth + 14), y: junctionPt.y - perpY * (halfWidth + 14) }
       : { x: endPt.x + cos * 16, y: endPt.y + sin * 16 };
 
-    const addBookPt = hasSubs ? null : { x: endPt.x + cos * 50 - perpX * 28, y: endPt.y + sin * 50 - perpY * 28 };
-    const addSubPt = hasSubs ? { x: junctionPt.x, y: junctionPt.y } : { x: endPt.x + cos * 50 + perpX * 28, y: endPt.y + sin * 50 + perpY * 28 };
+    const addHubPt = hasSubs
+      ? { x: junctionPt.x, y: junctionPt.y }
+      : { x: endPt.x + cos * 54, y: endPt.y + sin * 54 };
 
     includePt(endPt.x, endPt.y, 95, 95);
     includePt(swivelPt.x, swivelPt.y, 45, 45);
-    if (addBookPt) includePt(addBookPt.x, addBookPt.y, 45, 45);
-    includePt(addSubPt.x, addSubPt.y, 45, 45);
+    includePt(addHubPt.x, addHubPt.y, 64, 64);
 
     const hallGeom = {
       hall, depth, parentId, originX, originY,
       angle, cos, sin, perpX, perpY,
       rStart, rEnd, halfWidth, rugHalf,
       spineAt, bannerPt, endPt, junctionPt, swivelPt,
-      addBookPt, addSubPt, bays: [], collapsed: false
+      addHubPt, hasSubs, bays: [], collapsed: false
     };
 
     packedBays.forEach((pb, i) => {

@@ -1306,3 +1306,19 @@ body.lib-candlelight .oak-tabletop-plank {
 #canvas-wrap.pinching .library-cat-z2 {
   animation-play-state: paused !important;
 }
+
+/* Wing-end Add+ radial fan pop-out animation */
+@keyframes radialOptionPop {
+  0% { opacity: 0; transform: scale(0.55); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.radial-option-item .quick-add-inner {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: radialOptionPop 0.16s cubic-bezier(0.34, 1.56, 0.64, 1) var(--radial-delay, 0ms) both;
+}
+@media (max-width: 768px), (pointer: coarse), (prefers-reduced-motion: reduce) {
+  .radial-option-item .quick-add-inner {
+    animation: none !important;
+  }
+}

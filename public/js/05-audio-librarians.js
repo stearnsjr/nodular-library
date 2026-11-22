@@ -579,6 +579,7 @@ function renderMap() {
   });
 
   const ribbonsLayer = renderCrossRefRibbonsSVG(ink, glow);
+  const radialMenuLayer = typeof renderAddRadialMenuSVG === 'function' ? renderAddRadialMenuSVG(ink) : '';
 
   let sceneMarkup = `
     <g id="layer-halls">${hallFloors}</g>
@@ -586,6 +587,7 @@ function renderMap() {
     <g id="layer-banners">${hallBanners}</g>
     <g id="layer-shelves">${shelvesLayer}</g>
     <g id="layer-ribbons">${ribbonsLayer}</g>
+    <g id="layer-radial-menu">${radialMenuLayer}</g>
   `;
   const isTouchLite = window.innerWidth <= 768 || window.matchMedia('(pointer: coarse)').matches;
   if (isTouchLite) {

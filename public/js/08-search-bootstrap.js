@@ -910,6 +910,7 @@ window.addEventListener('keydown', (e) => {
     }
     if (el === searchInput) { clearSearch(false); searchInput.blur(); return; }
     if (typing) { el.blur(); return; }
+    if (openAddRadialHallId) { openAddRadialHallId = null; renderMap(); return; }
     if (openBookState.bookId) { closeOpenBook(); return; }
     if (searchMatches.active) { clearSearch(false); return; }
     if (activeStampLensId) { setStampLens(null); return; }

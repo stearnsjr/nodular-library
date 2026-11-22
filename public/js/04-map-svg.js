@@ -467,7 +467,7 @@ function renderCrossRefRibbonsSVG(ink, glow) {
 }
 
 function renderHallBannerSVG(hg, ink, glow) {
-  const { hall, depth, bannerPt, swivelPt, addBookPt, addSubPt, collapsed } = hg;
+  const { hall, depth, bannerPt, swivelPt, addHubPt, collapsed } = hg;
   const sw = getSwatch(hall.color);
   const icon = getHallIcon(hall.icon);
   const isSel = selection.type === 'hall' && selection.hallId === hall.id;
@@ -492,6 +492,7 @@ function renderHallBannerSVG(hg, ink, glow) {
     Q ${-hw} ${-hh} ${-hw + 8} ${-hh} Z
   `;
   const totalBooks = countTotalBooks(hall);
+  const isRadialOpen = openAddRadialHallId === hall.id;
 
   return `
     <g class="hall-banner-hit node-interactive" data-action="select-hall" data-hall-id="${hall.id}" transform="translate(${bannerPt.x.toFixed(1)}, ${bannerPt.y.toFixed(1)})">
@@ -538,43 +539,108 @@ function renderHallBannerSVG(hg, ink, glow) {
       </g>
     </g>
 
-    ${addBookPt ? `
-    <g class="quick-add-hit node-interactive" data-action="add-book" data-hall-id="${hall.id}" transform="translate(${(addBookPt.x - 48).toFixed(1)}, ${addBookPt.y.toFixed(1)})">
-      <rect x="-24" y="-14" width="48" height="28" fill="transparent" />
+    ${addHubPt && !isRadialOpen ? `
+    <g class="quick-add-hit node-interactive" data-action="toggle-add-radial" data-hall-id="${hall.id}" transform="translate(${addHubPt.x.toFixed(1)}, ${addHubPt.y.toFixed(1)})">
+      <circle r="24" fill="transparent" />
       <g class="quick-add-inner">
-        <rect x="-22" y="-11.5" width="44" height="23" rx="11.5" fill="${isCandlelight ? '#3d2a1e' : '#fff8e8'}" stroke="${sw.fill}" stroke-width="2" filter="url(#bookShadow)" />
-        <text x="0" y="3.5" text-anchor="middle" font-size="9.5" font-weight="800" fill="${sw.fill}">+ Book</text>
-        <title>Shelve a new book in ${esc(hall.title)}</title>
-      </g>
-    </g>
-    <g class="quick-add-hit node-interactive" data-action="add-scroll" data-hall-id="${hall.id}" transform="translate(${(addBookPt.x + 2).toFixed(1)}, ${addBookPt.y.toFixed(1)})">
-      <rect x="-26" y="-14" width="52" height="28" fill="transparent" />
-      <g class="quick-add-inner">
-        <rect x="-24" y="-11.5" width="48" height="23" rx="11.5" fill="${isCandlelight ? '#3d2a1e' : '#fbf0d9'}" stroke="#b07b3b" stroke-width="2" filter="url(#bookShadow)" />
-        <text x="0" y="3.5" text-anchor="middle" font-size="9.5" font-weight="800" fill="${isCandlelight ? '#f5d493' : '#7a4b1e'}">+ Scroll</text>
-        <title>Shelve a new single-page scroll in ${esc(hall.title)}</title>
-      </g>
-    </g>
-    <g class="quick-add-hit node-interactive" data-action="add-dndchar" data-hall-id="${hall.id}" transform="translate(${(addBookPt.x + 50).toFixed(1)}, ${addBookPt.y.toFixed(1)})">
-      <rect x="-24" y="-14" width="48" height="28" fill="transparent" />
-      <g class="quick-add-inner">
-        <rect x="-21" y="-11.5" width="42" height="23" rx="11.5" fill="${isCandlelight ? '#3d241b' : '#fdf2f0'}" stroke="#b54434" stroke-width="2" filter="url(#bookShadow)" />
-        <text x="0" y="3.5" text-anchor="middle" font-size="9.5" font-weight="800" fill="${isCandlelight ? '#f5b3a6' : '#9b3324'}">+ D&amp;D</text>
-        <title>Shelve a new D&amp;D Character Book (5e / 2024) in ${esc(hall.title)}</title>
+        <rect x="-25" y="-12.5" width="50" height="25" rx="12.5" fill="${isCandlelight ? '#3d2a1e' : '#fff8e8'}" stroke="${sw.fill}" stroke-width="2.1" filter="url(#bookShadow)" />
+        <text x="0" y="3.8" text-anchor="middle" font-size="10.5" font-weight="800" fill="${isCandlelight ? '#f8ebd4' : sw.deep}">Add +</text>
+        <title>Add a Book, Scroll, D&amp;D Sheet, or Wing to ${esc(hall.title)}</title>
       </g>
     </g>
     ` : ''}
+  `;
+}
 
-    ${addSubPt ? `
-    <g class="quick-add-hit node-interactive" data-action="add-subhall" data-hall-id="${hall.id}" transform="translate(${addSubPt.x.toFixed(1)}, ${addSubPt.y.toFixed(1)})">
-      <rect x="-28" y="-14" width="56" height="28" fill="transparent" />
-      <g class="quick-add-inner">
-        <rect x="-26" y="-11.5" width="52" height="23" rx="11.5" fill="${sw.fill}" stroke="${ink}" stroke-width="1.8" filter="url(#bookShadow)" />
-        <text x="0" y="3.5" text-anchor="middle" font-size="9.5" font-weight="800" fill="#fffaf2">+ Wing</text>
-        <title>Branch an angled sub-hall off ${esc(hall.title)}</title>
+function renderAddRadialMenuSVG(ink) {
+  if (!openAddRadialHallId) return '';
+  const hg = layoutCache.hallMap[openAddRadialHallId];
+  if (!hg || hg.collapsed || !hg.addHubPt) return '';
+
+  const { hall, addHubPt, angle, hasSubs } = hg;
+  const sw = getSwatch(hall.color);
+  const cx = addHubPt.x;
+  const cy = addHubPt.y;
+
+  const deg = Math.PI / 180;
+  const radius = hasSubs ? 60 : 74;
+  const angleOffsets = hasSubs
+    ? [-135 * deg, -45 * deg, 45 * deg, 135 * deg]
+    : [-72 * deg, -24 * deg, 24 * deg, 72 * deg];
+
+  const options = [
+    {
+      action: 'add-book',
+      label: '+ Book',
+      w: 50,
+      fill: isCandlelight ? '#3d2a1e' : '#fff8e8',
+      stroke: sw.fill,
+      text: isCandlelight ? '#f8ebd4' : sw.fill,
+      title: `Shelve a new book in ${hall.title}`
+    },
+    {
+      action: 'add-scroll',
+      label: '+ Scroll',
+      w: 54,
+      fill: isCandlelight ? '#3d2a1e' : '#fbf0d9',
+      stroke: '#b07b3b',
+      text: isCandlelight ? '#f5d493' : '#7a4b1e',
+      title: `Shelve a new single-page scroll in ${hall.title}`
+    },
+    {
+      action: 'add-dndchar',
+      label: '+ D&D',
+      w: 48,
+      fill: isCandlelight ? '#3d241b' : '#fdf2f0',
+      stroke: '#b54434',
+      text: isCandlelight ? '#f5b3a6' : '#9b3324',
+      title: `Shelve a new D&D Character Book in ${hall.title}`
+    },
+    {
+      action: 'add-subhall',
+      label: '+ Wing',
+      w: 52,
+      fill: sw.fill,
+      stroke: ink,
+      text: '#fffaf2',
+      title: `Branch an angled sub-hall off ${hall.title}`
+    }
+  ];
+
+  let spokes = '';
+  let items = '';
+  options.forEach((opt, i) => {
+    const a = angle + angleOffsets[i];
+    const ox = cx + Math.cos(a) * radius;
+    const oy = cy + Math.sin(a) * radius;
+    const hw = opt.w / 2;
+    spokes += `<line x1="${cx.toFixed(1)}" y1="${cy.toFixed(1)}" x2="${ox.toFixed(1)}" y2="${oy.toFixed(1)}" stroke="${isCandlelight ? '#e0a94d' : sw.deep}" stroke-width="2" stroke-dasharray="3.5 3" opacity="0.68" />`;
+    items += `
+      <g class="quick-add-hit radial-option-item node-interactive" data-action="${opt.action}" data-hall-id="${hall.id}" transform="translate(${ox.toFixed(1)}, ${oy.toFixed(1)})" style="--radial-delay:${i * 28}ms;">
+        <rect x="${(-hw - 5).toFixed(1)}" y="-16" width="${(opt.w + 10).toFixed(1)}" height="32" fill="transparent" />
+        <g class="quick-add-inner">
+          <rect x="${(-hw).toFixed(1)}" y="-12.5" width="${opt.w}" height="25" rx="12.5" fill="${opt.fill}" stroke="${opt.stroke}" stroke-width="2.1" filter="url(#bookShadow)" />
+          <text x="0" y="3.8" text-anchor="middle" font-size="10" font-weight="800" fill="${opt.text}">${opt.label}</text>
+          <title>${esc(opt.title)}</title>
+        </g>
+      </g>
+    `;
+  });
+
+  return `
+    <g class="add-radial-menu" data-radial-hall="${hall.id}">
+      <circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${(radius * 0.72).toFixed(1)}" fill="${isCandlelight ? 'rgba(24,15,9,0.28)' : 'rgba(255,248,232,0.34)'}" stroke="${isCandlelight ? '#e0a94d' : sw.fill}" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.65" pointer-events="none" />
+      ${spokes}
+      ${items}
+      <g class="quick-add-hit node-interactive" data-action="toggle-add-radial" data-hall-id="${hall.id}" transform="translate(${cx.toFixed(1)}, ${cy.toFixed(1)})">
+        <circle r="22" fill="transparent" />
+        <g class="quick-add-inner">
+          <circle r="15" fill="${sw.fill}" stroke="${isCandlelight ? '#fff3d6' : ink}" stroke-width="2.2" filter="url(#bookShadow)" />
+          <path d="M -4.5 -4.5 L 4.5 4.5 M 4.5 -4.5 L -4.5 4.5" stroke="#fffaf2" stroke-width="2.3" stroke-linecap="round" />
+          <title>Close add options</title>
+        </g>
       </g>
     </g>
-    ` : ''}
   `;
 }
 

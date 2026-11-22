@@ -44,10 +44,22 @@ function clearSelection() {
 svgEl.addEventListener('click', (e) => {
   if (suppressNextClick || dragMoved) return;
   const target = e.target.closest('[data-action]');
-  if (!target) { if (selection.type) clearSelection(); return; }
+  if (!target) {
+    let changed = false;
+    if (openAddRadialHallId) { openAddRadialHallId = null; changed = true; }
+    if (selection.type) { clearSelection(); return; }
+    if (changed) renderMap();
+    return;
+  }
   e.stopPropagation();
   const { action, hallId, bookId } = target.dataset;
   if (action === 'drag-hall-angle') return;
+  if (action === 'toggle-add-radial') {
+    openAddRadialHallId = (openAddRadialHallId === hallId) ? null : hallId;
+    renderMap();
+    return;
+  }
+  if (openAddRadialHallId) openAddRadialHallId = null;
   if (action === 'select-hub') { cardIndexTab = 'rotunda'; selectNode('hub'); }
   else if (action === 'pet-cat') {
     playCozySound('purr');

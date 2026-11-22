@@ -1030,8 +1030,47 @@ function makeTemplates() {
 function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
 const TEMPLATES = makeTemplates();
 
+const ACTIVE_LIB_KEY = 'storytellers_active_library_id_v1';
+let activeLibraryId = 'default';
+try {
+  activeLibraryId = localStorage.getItem(ACTIVE_LIB_KEY) || 'default';
+} catch (e) {}
+let savedLibraries = [];
+let savedBackups = [];
+const SERVER_SYNC_SUPPORTED = typeof window !== 'undefined' && /^https?:$/i.test(window.location?.protocol || '');
+let hasCachedInitialState = false;
+
+function getLibStorageKey(id = activeLibraryId) {
+  return (!id || id === 'default') ? STORAGE_KEY : `${STORAGE_KEY}:${id}`;
+}
+
+function setActiveLibraryId(id) {
+  activeLibraryId = id || 'default';
+  try { localStorage.setItem(ACTIVE_LIB_KEY, activeLibraryId); } catch (e) {}
+}
+
+function loadInitialState() {
+  try {
+    const primaryRaw = localStorage.getItem(getLibStorageKey(activeLibraryId));
+    const raw = primaryRaw || (activeLibraryId === 'default' ? localStorage.getItem(STORAGE_KEY) : null);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.title === 'string' && Array.isArray(parsed.halls)) {
+        hasCachedInitialState = true;
+        return normalizeLibraryState(parsed);
+      }
+    }
+  } catch (e) {}
+  hasCachedInitialState = false;
+  if (SERVER_SYNC_SUPPORTED) {
+    return normalizeLibraryState({ title: 'Loading Library…', subtitle: '', halls: [] });
+  }
+  return deepClone(TEMPLATES.creative);
+}
+
 let state = loadInitialState();
 let selection = { type: null, hallId: null };
+let openAddRadialHallId = null;
 let cardIndexTab = 'rotunda'; // 'rotunda' | 'colors' | 'stamps' | 'ribbons'
 let expandedIndexStampId = null;
 let expandedCartPageId = null;
@@ -1310,38 +1349,7 @@ function redo() {
   showToast('Redid change');
 }
 
-const ACTIVE_LIB_KEY = 'storytellers_active_library_id_v1';
-let activeLibraryId = 'default';
-try {
-  activeLibraryId = localStorage.getItem(ACTIVE_LIB_KEY) || 'default';
-} catch (e) {}
-let savedLibraries = [];
-let savedBackups = [];
-
-function getLibStorageKey(id = activeLibraryId) {
-  return (!id || id === 'default') ? STORAGE_KEY : `${STORAGE_KEY}:${id}`;
-}
-
-function setActiveLibraryId(id) {
-  activeLibraryId = id || 'default';
-  try { localStorage.setItem(ACTIVE_LIB_KEY, activeLibraryId); } catch (e) {}
-}
-
-function loadInitialState() {
-  try {
-    const raw = localStorage.getItem(getLibStorageKey(activeLibraryId)) || localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed.title === 'string' && Array.isArray(parsed.halls)) {
-        return normalizeLibraryState(parsed);
-      }
-    }
-  } catch (e) {}
-  return deepClone(TEMPLATES.creative);
-}
-
 let quotaWarned = false;
-const SERVER_SYNC_SUPPORTED = typeof window !== 'undefined' && /^https?:$/i.test(window.location?.protocol || '');
 let serverSyncReady = false;
 let serverRev = 0;
 let serverSaveTimer = null;
@@ -1672,9 +1680,10 @@ async function initServerSync() {
     const data = await resp.json();
     serverSyncReady = true;
     if (data && data.id) setActiveLibraryId(data.id);
-    if (data && data.state && typeof data.state.title === 'string' && Array.isArray(data.state.halls)) {
+      if (data && data.state && typeof data.state.title === 'string' && Array.isArray(data.state.halls)) {
       serverRev = typeof data.rev === 'number' ? data.rev : 1;
       state = normalizeLibraryState(data.state);
+      openAddRadialHallId = null;
       try { localStorage.setItem(getLibStorageKey(activeLibraryId), JSON.stringify(state)); } catch (e) {}
       historyStack = [JSON.stringify(state)];
       historyIndex = 0;
@@ -1685,12 +1694,30 @@ async function initServerSync() {
       if (typeof fitToView === 'function') fitToView(false);
       upsertLocalLibraryMeta(activeLibraryId, state, serverRev);
     } else {
+      if (!hasCachedInitialState) {
+        state = normalizeLibraryState(deepClone(TEMPLATES.creative));
+        historyStack = [JSON.stringify(state)];
+        historyIndex = 0;
+        syncSearchMatches();
+        renderAll();
+        updateUndoButtons();
+        if (typeof fitToView === 'function') fitToView(false);
+      }
       serverRev = 0;
       await flushServerSave(true);
       await refreshLibraryList();
     }
   } catch (err) {
     // Server API unavailable (e.g. static hosting) — keep using localStorage seamlessly
+    if (!hasCachedInitialState) {
+      state = normalizeLibraryState(deepClone(TEMPLATES.creative));
+      historyStack = [JSON.stringify(state)];
+      historyIndex = 0;
+      syncSearchMatches();
+      renderAll();
+      updateUndoButtons();
+      if (typeof fitToView === 'function') fitToView(false);
+    }
   }
 }
 
