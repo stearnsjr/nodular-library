@@ -1327,8 +1327,14 @@ function syncSearchMatches() {
   }
 }
 
-const historyStack = [];
+let historyStack = [];
 let historyIndex = -1;
+
+function resetHistory(snap = JSON.stringify(state)) {
+  historyStack = [snap];
+  historyIndex = 0;
+  updateUndoButtons();
+}
 
 function pushHistory() {
   const snap = JSON.stringify(state);
@@ -1427,20 +1433,25 @@ async function flushServerSave(force = false) {
     if (resp.status === 409) {
       const conflict = await resp.json().catch(() => null);
       if (conflict && conflict.state && saveLibId === activeLibraryId) {
-        const loadNewer = confirm('Another device saved newer changes to this library.\n\nClick OK to load the latest version from the server, or Cancel to keep and overwrite with this device\'s version.');
+        const loadNewer = confirm('Another device saved newer changes to this library.\n\nClick OK to load the latest version from the server, or Cancel to choose whether to overwrite.');
         if (loadNewer) {
           serverRev = conflict.rev || serverRev;
           state = normalizeLibraryState(conflict.state);
           try { localStorage.setItem(getLibStorageKey(activeLibraryId), JSON.stringify(state)); } catch (e) {}
+          resetHistory();
           upsertLocalLibraryMeta(activeLibraryId, state, serverRev);
           reconcileViews();
           syncSearchMatches();
           renderAll();
           showToast('Synced latest library from server');
         } else {
-          serverSaveInFlight = false;
-          await flushServerSave(true);
-          return;
+          const confirmOverwrite = confirm('Are you sure you want to OVERWRITE the newer server version with this device\'s copy?\n\n(A backup of the server version will be saved automatically.)');
+          if (confirmOverwrite) {
+            serverSaveInFlight = false;
+            await flushServerSave(true);
+            return;
+          }
+          showToast('Save paused — refresh or edit again to resolve sync conflict');
         }
       }
     } else if (resp.ok) {
@@ -1461,7 +1472,10 @@ async function flushServerSave(force = false) {
 function scheduleServerSave(delayMs = 450) {
   if (!SERVER_SYNC_SUPPORTED || !serverSyncReady) return;
   clearTimeout(serverSaveTimer);
-  serverSaveTimer = setTimeout(() => { flushServerSave(false); }, delayMs);
+  serverSaveTimer = setTimeout(() => {
+    serverSaveTimer = null;
+    flushServerSave(false);
+  }, delayMs);
 }
 
 async function switchToLibrary(libId) {
@@ -1662,8 +1676,28 @@ async function permanentlyDeleteBackup(backupName) {
   }
 }
 
+async function permanentlyDeleteSingleBackup(backupName, label = '') {
+  if (!backupName) return;
+  const desc = label || backupName;
+  if (!confirm(`Permanently delete backup snapshot "${desc}"?\n\nOther snapshots for this library will be kept.`)) return;
+  try {
+    const resp = await fetch(`/api/backups/${encodeURIComponent(backupName)}?single=1`, { method: 'DELETE' });
+    if (!resp.ok) {
+      showToast('Could not delete backup snapshot');
+      return;
+    }
+    const data = await resp.json();
+    if (Array.isArray(data.backups)) savedBackups = data.backups;
+    if (typeof renderLibrariesMenu === 'function') renderLibrariesMenu();
+    showToast('Deleted backup snapshot');
+  } catch (err) {
+    showToast('Failed to delete backup snapshot');
+  }
+}
+
 async function initServerSync() {
   if (!SERVER_SYNC_SUPPORTED) return;
+  let loadedFromServer = false;
   try {
     let serverLastActiveId = null;
     try {
@@ -1687,29 +1721,27 @@ async function initServerSync() {
     const resp = await fetch(`/api/state?id=${encodeURIComponent(targetId)}`, { cache: 'no-store' });
     if (!resp.ok) return;
     const data = await resp.json();
-    serverSyncReady = true;
     if (data && data.id) setActiveLibraryId(data.id);
-      if (data && data.state && typeof data.state.title === 'string' && Array.isArray(data.state.halls)) {
+    if (data && data.state && typeof data.state.title === 'string' && Array.isArray(data.state.halls)) {
       serverRev = typeof data.rev === 'number' ? data.rev : 1;
       state = normalizeLibraryState(data.state);
+      loadedFromServer = true;
+      serverSyncReady = true;
       openAddRadialHallId = null;
       try { localStorage.setItem(getLibStorageKey(activeLibraryId), JSON.stringify(state)); } catch (e) {}
-      historyStack = [JSON.stringify(state)];
-      historyIndex = 0;
+      resetHistory();
       reconcileViews();
       syncSearchMatches();
       renderAll();
-      updateUndoButtons();
       if (typeof fitToView === 'function') fitToView(false);
       upsertLocalLibraryMeta(activeLibraryId, state, serverRev);
     } else {
+      serverSyncReady = true;
       if (!hasCachedInitialState) {
         state = normalizeLibraryState(deepClone(TEMPLATES.creative));
-        historyStack = [JSON.stringify(state)];
-        historyIndex = 0;
+        resetHistory();
         syncSearchMatches();
         renderAll();
-        updateUndoButtons();
         if (typeof fitToView === 'function') fitToView(false);
       }
       serverRev = 0;
@@ -1717,15 +1749,17 @@ async function initServerSync() {
       await refreshLibraryList();
     }
   } catch (err) {
-    // Server API unavailable (e.g. static hosting) — keep using localStorage seamlessly
-    if (!hasCachedInitialState) {
-      state = normalizeLibraryState(deepClone(TEMPLATES.creative));
-      historyStack = [JSON.stringify(state)];
-      historyIndex = 0;
-      syncSearchMatches();
-      renderAll();
-      updateUndoButtons();
-      if (typeof fitToView === 'function') fitToView(false);
+    // Only fall back to starter template if we never loaded from server or localStorage,
+    // and keep serverSyncReady disabled so an offline/init error can never overwrite server data.
+    if (!loadedFromServer) {
+      serverSyncReady = false;
+      if (!hasCachedInitialState) {
+        state = normalizeLibraryState(deepClone(TEMPLATES.creative));
+        resetHistory();
+        syncSearchMatches();
+        renderAll();
+        if (typeof fitToView === 'function') fitToView(false);
+      }
     }
   }
 }
@@ -1744,6 +1778,7 @@ async function checkServerUpdates() {
         serverRev = data.rev;
         state = normalizeLibraryState(data.state);
         try { localStorage.setItem(getLibStorageKey(activeLibraryId), JSON.stringify(state)); } catch (e) {}
+        resetHistory();
         upsertLocalLibraryMeta(activeLibraryId, state, serverRev);
         reconcileViews();
         syncSearchMatches();

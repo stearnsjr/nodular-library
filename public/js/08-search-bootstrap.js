@@ -506,6 +506,7 @@ btnTasksMenu?.addEventListener('click', (e) => {
   }
 });
 let showBackupsInMenu = false;
+const expandedBackupLibIds = new Set();
 const HIDDEN_LIB_TPLS_KEY = 'storytellers_hidden_lib_templates_v1';
 const STARTER_LIB_TEMPLATES = [
   { key: 'creative', title: 'Creative Project Atlas', sub: 'Halls, Sub-Halls, Study Table & Pile' },
@@ -522,12 +523,22 @@ function saveHiddenLibTemplates() {
   try { localStorage.setItem(HIDDEN_LIB_TPLS_KEY, JSON.stringify(hiddenLibTemplates)); } catch (e) {}
 }
 
-function formatBackupTime(iso) {
+function formatBackupTime(iso, includeSeconds = false) {
   if (!iso) return '';
   try {
     const d = new Date(iso);
-    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const opts = includeSeconds
+      ? { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' }
+      : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+    return d.toLocaleString(undefined, opts);
   } catch (e) { return ''; }
+}
+
+function formatBackupSize(bytes) {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes)) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function renderLibrariesMenu() {
@@ -611,25 +622,69 @@ function renderLibrariesMenu() {
       <span>${showBackupsInMenu ? '&#9652;' : '&#9662;'}</span>
     </button>
     ${showBackupsInMenu ? `
-      <div class="space-y-1.5 mt-1 max-h-52 overflow-y-auto nice-scroll pr-0.5">
+      <div class="space-y-1.5 mt-1 max-h-80 overflow-y-auto nice-scroll pr-0.5">
         ${savedBackups.length === 0
           ? `<div class="px-2 py-2 text-[11px] italic" style="color: var(--ui-muted);">No server backups yet.</div>`
-          : savedBackups.map(bk => `
-              <div class="rounded-xl p-2 flex flex-col gap-1.5" style="background: var(--ui-surface-alt); border: 1px solid var(--ui-border);">
-                <div class="min-w-0">
-                  <div class="font-storybook font-bold text-xs truncate" style="color: var(--ui-ink);">${esc(bk.title || 'Untitled Backup')}</div>
-                  <div class="text-[10px] truncate" style="color: var(--ui-muted);">
-                    ${esc(formatBackupTime(bk.mtime))} &middot; ${bk.hallCount ?? 0} halls &middot; ${bk.bookCount ?? 0} items${bk.backupCount > 1 ? ` &middot; ${bk.backupCount} backups` : ''}
+          : savedBackups.map(bk => {
+              const snapshots = Array.isArray(bk.snapshots) && bk.snapshots.length > 0 ? bk.snapshots : [bk];
+              const isExpanded = expandedBackupLibIds.has(bk.libId);
+              const totalCount = bk.backupCount || snapshots.length;
+              const pageLabel = typeof bk.pageCount === 'number' ? ` &middot; ${bk.pageCount} pg` : '';
+              return `
+                <div class="rounded-xl p-2 flex flex-col gap-1.5" style="background: var(--ui-surface-alt); border: 1px solid var(--ui-border);">
+                  <button type="button" data-toggle-backup-lib="${esc(bk.libId)}"
+                          title="${isExpanded ? 'Collapse backup snapshots' : 'Click to expand all backup snapshots'}"
+                          aria-expanded="${isExpanded ? 'true' : 'false'}"
+                          class="w-full text-left rounded-lg px-1.5 py-1 -mx-1 -mt-0.5 transition-colors hover:bg-black/5 cursor-pointer bg-transparent border-0 flex items-start justify-between gap-2">
+                    <span class="min-w-0 flex-1">
+                      <span class="font-storybook font-bold text-xs truncate block" style="color: var(--ui-ink);">${esc(bk.title || 'Untitled Backup')}</span>
+                      <span class="text-[10px] truncate block" style="color: var(--ui-muted);">
+                        ${esc(formatBackupTime(bk.mtime))} &middot; ${bk.hallCount ?? 0} halls &middot; ${bk.bookCount ?? 0} items${pageLabel}
+                      </span>
+                    </span>
+                    <span class="shrink-0 flex items-center gap-1 pt-0.5 text-[10px] font-bold" style="color: var(--ui-muted);">
+                      <span>${totalCount}</span>
+                      <span>${isExpanded ? '&#9652;' : '&#9662;'}</span>
+                    </span>
+                  </button>
+                  <div class="flex items-center gap-1.5">
+                    <button type="button" data-restore-backup="${esc(bk.name)}"
+                            class="storybook-btn rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer flex-1">Restore Latest</button>
+                    <button type="button" data-perma-del-backup="${esc(bk.name)}"
+                            title="Permanently delete all ${totalCount} backup${totalCount === 1 ? '' : 's'} for this library"
+                            class="rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer bg-transparent border border-red-400/50 text-red-600 hover:bg-red-500/10">Perma Delete</button>
                   </div>
+                  ${isExpanded ? `
+                    <div class="pt-1.5 mt-0.5 border-t space-y-1 max-h-48 overflow-y-auto nice-scroll pr-0.5" style="border-color: var(--ui-border);">
+                      ${snapshots.map((snap, idx) => {
+                        const snapPages = typeof snap.pageCount === 'number' ? ` &middot; ${snap.pageCount} pg` : '';
+                        const snapSize = formatBackupSize(snap.size);
+                        const diffTitle = snap.title && snap.title !== bk.title ? ` &middot; ${esc(snap.title)}` : '';
+                        return `
+                          <div class="rounded-lg px-2 py-1.5 flex items-center gap-1.5" style="background: var(--ui-surface); border: 1px solid var(--ui-border);">
+                            <div class="min-w-0 flex-1">
+                              <div class="text-[10.5px] font-bold truncate" style="color: var(--ui-ink);">
+                                ${esc(formatBackupTime(snap.mtime, true))}${idx === 0 ? ' <span style="color:var(--ui-accent);">(Latest)</span>' : ''}
+                              </div>
+                              <div class="text-[9.5px] truncate" style="color: var(--ui-muted);">
+                                r${snap.rev ?? '?'} &middot; ${snap.hallCount ?? 0}h &middot; ${snap.bookCount ?? 0} items${snapPages}${snapSize ? ` &middot; ${esc(snapSize)}` : ''}${diffTitle}
+                              </div>
+                            </div>
+                            <button type="button" data-restore-backup="${esc(snap.name)}"
+                                    title="Restore snapshot from ${esc(formatBackupTime(snap.mtime, true))}"
+                                    class="storybook-btn shrink-0 rounded-md px-2 py-1 text-[10px] font-bold cursor-pointer">Restore</button>
+                            <button type="button" data-del-single-backup="${esc(snap.name)}"
+                                    data-del-single-label="${esc(`${snap.title || bk.title || 'Backup'} (${formatBackupTime(snap.mtime, true)})`)}"
+                                    title="Delete only this backup snapshot"
+                                    class="shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold cursor-pointer bg-transparent border border-red-400/40 text-red-600 hover:bg-red-500/10">&times;</button>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  ` : ''}
                 </div>
-                <div class="flex items-center gap-1.5">
-                  <button type="button" data-restore-backup="${esc(bk.name)}"
-                          class="storybook-btn rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer flex-1">Restore</button>
-                  <button type="button" data-perma-del-backup="${esc(bk.name)}"
-                          class="rounded-lg px-2 py-1 text-[11px] font-bold cursor-pointer bg-transparent border border-red-400/50 text-red-600 hover:bg-red-500/10">Perma Delete</button>
-                </div>
-              </div>
-            `).join('')
+              `;
+            }).join('')
         }
       </div>
     ` : ''}
@@ -717,6 +772,17 @@ function renderLibrariesMenu() {
     if (showBackupsInMenu) refreshBackupList();
   });
 
+  menuTemplates.querySelectorAll('[data-toggle-backup-lib]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const libId = btn.dataset.toggleBackupLib;
+      if (!libId) return;
+      if (expandedBackupLibIds.has(libId)) expandedBackupLibIds.delete(libId);
+      else expandedBackupLibIds.add(libId);
+      renderLibrariesMenu();
+    });
+  });
+
   menuTemplates.querySelectorAll('[data-restore-backup]').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -730,6 +796,13 @@ function renderLibrariesMenu() {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       await permanentlyDeleteBackup(btn.dataset.permaDelBackup);
+    });
+  });
+
+  menuTemplates.querySelectorAll('[data-del-single-backup]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await permanentlyDeleteSingleBackup(btn.dataset.delSingleBackup, btn.dataset.delSingleLabel || '');
     });
   });
 }

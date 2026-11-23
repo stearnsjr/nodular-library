@@ -79,6 +79,15 @@ function setLastActiveLibraryId(libId) {
   writeMeta({ lastActiveId: sanitizeLibId(libId) });
 }
 
+function countHallsInTree(halls) {
+  let n = 0;
+  for (const h of halls || []) {
+    n += 1;
+    if (Array.isArray(h.subHalls)) n += countHallsInTree(h.subHalls);
+  }
+  return n;
+}
+
 function countBooksInHalls(halls) {
   let n = 0;
   for (const h of halls || []) {
@@ -86,6 +95,26 @@ function countBooksInHalls(halls) {
     if (Array.isArray(h.subHalls)) n += countBooksInHalls(h.subHalls);
   }
   return n;
+}
+
+function countPagesInHalls(halls) {
+  let n = 0;
+  for (const h of halls || []) {
+    for (const b of h.books || []) {
+      n += Array.isArray(b.pages) ? b.pages.length : 0;
+    }
+    if (Array.isArray(h.subHalls)) n += countPagesInHalls(h.subHalls);
+  }
+  return n;
+}
+
+function isValidBackupName(name) {
+  return typeof name === 'string' && path.basename(name) === name && name.startsWith('library-') && name.endsWith('.json');
+}
+
+function extractBackupLibId(name) {
+  const m = name.match(/^library-(.+)-rev(\d+)-/);
+  return m ? sanitizeLibId(m[1]) : 'default';
 }
 
 function migrateLegacyStateIfNeeded() {
@@ -187,15 +216,27 @@ function maybeWriteRollingBackup(libId, previousEnvelope, force = false) {
   if (!force && now - lastAt < BACKUP_MIN_INTERVAL_MS) return;
   lastBackupAtByLib.set(id, now);
   const stamp = new Date(now).toISOString().replace(/[:.]/g, '-');
-  const backupPath = path.join(BACKUP_DIR, `library-${id}-rev${previousEnvelope.rev}-${stamp}.json`);
+  let backupName = `library-${id}-rev${previousEnvelope.rev}-${stamp}.json`;
+  let backupPath = path.join(BACKUP_DIR, backupName);
+  if (fs.existsSync(backupPath)) {
+    backupName = `library-${id}-rev${previousEnvelope.rev}-${stamp}-${crypto.randomBytes(2).toString('hex')}.json`;
+    backupPath = path.join(BACKUP_DIR, backupName);
+  }
   try {
     fs.writeFileSync(backupPath, JSON.stringify(previousEnvelope), 'utf8');
-    const files = fs.readdirSync(BACKUP_DIR)
-      .filter((f) => f.startsWith('library-') && f.endsWith('.json'))
-      .sort();
-    while (files.length > MAX_BACKUPS) {
-      const oldest = files.shift();
-      fs.unlinkSync(path.join(BACKUP_DIR, oldest));
+    // Prune oldest snapshots per library by actual mtime (not lexicographical filename)
+    const filesForLib = fs.readdirSync(BACKUP_DIR)
+      .filter((f) => isValidBackupName(f) && extractBackupLibId(f) === id)
+      .map((f) => {
+        const full = path.join(BACKUP_DIR, f);
+        let mtimeMs = 0;
+        try { mtimeMs = fs.statSync(full).mtimeMs; } catch (e) {}
+        return { name: f, full, mtimeMs };
+      })
+      .sort((a, b) => a.mtimeMs - b.mtimeMs);
+    while (filesForLib.length > MAX_BACKUPS) {
+      const oldest = filesForLib.shift();
+      try { fs.unlinkSync(oldest.full); } catch (e) {}
     }
   } catch (err) {
     console.error('[library] Backup write failed:', err.message);
@@ -497,7 +538,19 @@ const server = http.createServer(async (req, res) => {
         });
         return;
       }
-      maybeWriteRollingBackup(libId, current, false);
+      let forceBackup = force;
+      if (!forceBackup && current && current.state) {
+        const prevHalls = countHallsInTree(current.state.halls);
+        const nextHalls = countHallsInTree(nextState.halls);
+        const prevBooks = countBooksInHalls(current.state.halls);
+        const nextBooks = countBooksInHalls(nextState.halls);
+        const prevPages = countPagesInHalls(current.state.halls);
+        const nextPages = countPagesInHalls(nextState.halls);
+        if (nextHalls < prevHalls || nextBooks < prevBooks || nextPages < prevPages) {
+          forceBackup = true;
+        }
+      }
+      maybeWriteRollingBackup(libId, current, forceBackup);
       const updated = {
         rev: current.rev + 1,
         updatedAt: new Date().toISOString(),
@@ -510,15 +563,6 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, err.statusCode || 500, { error: err.message || 'Save failed' });
     }
     return;
-  }
-
-  function isValidBackupName(name) {
-    return typeof name === 'string' && path.basename(name) === name && name.startsWith('library-') && name.endsWith('.json');
-  }
-
-  function extractBackupLibId(name) {
-    const m = name.match(/^library-(.+)-rev(\d+)-/);
-    return m ? sanitizeLibId(m[1]) : 'default';
   }
 
   function listBackups() {
@@ -538,22 +582,30 @@ const server = http.createServer(async (req, res) => {
           rev: env.rev || (m ? Number(m[2]) : 0),
           title: env.state?.title || 'Untitled Backup',
           hallCount: Array.isArray(env.state?.halls) ? env.state.halls.length : 0,
-          bookCount: countBooksInHalls(env.state?.halls)
+          bookCount: countBooksInHalls(env.state?.halls),
+          pageCount: countPagesInHalls(env.state?.halls)
         };
       })
       .sort((a, b) => b.mtimeMs - a.mtimeMs);
 
-    // Group by unique library ID, keeping the most recent snapshot per library
+    // Group by unique library ID, keeping the most recent snapshot at top level
+    // and attaching the full chronological list of snapshots for expansion in the UI.
     const byLib = new Map();
     for (const entry of allEntries) {
+      const { mtimeMs, ...cleanEntry } = entry;
       const existing = byLib.get(entry.libId);
       if (!existing) {
-        byLib.set(entry.libId, { ...entry, backupCount: 1 });
+        byLib.set(entry.libId, {
+          ...cleanEntry,
+          backupCount: 1,
+          snapshots: [cleanEntry]
+        });
       } else {
         existing.backupCount += 1;
+        existing.snapshots.push(cleanEntry);
       }
     }
-    return Array.from(byLib.values()).map(({ mtimeMs, ...rest }) => rest);
+    return Array.from(byLib.values());
   }
 
   if (pathname === '/api/backups' && req.method === 'GET') {
@@ -634,6 +686,16 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const targetLibId = extractBackupLibId(rawName);
+      if (url.searchParams.get('single') === '1') {
+        const backupPath = path.join(BACKUP_DIR, rawName);
+        if (!fs.existsSync(backupPath)) {
+          sendJson(res, 404, { error: 'Backup not found' });
+          return;
+        }
+        fs.unlinkSync(backupPath);
+        sendJson(res, 200, { ok: true, name: rawName, libId: targetLibId, deletedCount: 1, backups: listBackups() });
+        return;
+      }
       const files = fs.readdirSync(BACKUP_DIR).filter((f) => isValidBackupName(f) && extractBackupLibId(f) === targetLibId);
       let deletedCount = 0;
       for (const f of files) {
